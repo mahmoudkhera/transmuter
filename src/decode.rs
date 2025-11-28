@@ -16,7 +16,7 @@ impl Field {
     pub fn output( writer: &mut dyn Write) -> io::Result<()> {
         writeln!(writer, " fn extract(inst:u32,len:u32,pos:u32) -> u32 {{" )?;
 
-        writeln!(writer, " (value >> len) & ((1u32 << pos) - 1)")?;
+        writeln!(writer, " (inst >> len) & ((1u32 << pos) - 1)")?;
         writeln!(writer, "}}")?;
 
         Ok(())
@@ -82,15 +82,15 @@ pub struct Format {
 
 impl Format {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
-        Field::output(writer)?;
+        
         writeln!(
             writer,
-            "pub fn extract_{}(inst:Instruction)->{}{{",
+            "pub fn extract_{}(inst:u32)->{}{{",
             self.name, self.base
         )?;
 
         writeln!(writer, "{} {{ ", self.base)?;
-        for (name, field) in self.fields.iter() {
+        for (_, field) in self.fields.iter() {
             writeln!(
                 writer,
                 "{} : extract(inst,{},{}),",
@@ -145,7 +145,7 @@ pub fn split_first_token(s: &str) -> (String, String) {
 /// Parse format tail: bit tokens (left) and &base and assignments (right)
 /// Example rest: "---- ... s:1 rn:4 ... &s_rrr_shi rn=0"
 
-pub fn parse_format_tail(s: &str) -> (Vec<String>, String, Vec<(String, String)>) {
+pub fn parse_format_tail(name:&str,s: &str) -> (Vec<String>, String, Vec<(String, String)>) {
     let parts = s
         .split_whitespace()
         .map(|s| s.to_string())
@@ -159,6 +159,7 @@ pub fn parse_format_tail(s: &str) -> (Vec<String>, String, Vec<(String, String)>
             break;
         }
     }
+    
 
     if let Some(ai) = amp_index {
         let bit_tokens = parts[0..ai].to_vec(); //"---- s:1 rn:4 &s_rrr_shi rn=0 s=1"
@@ -178,7 +179,8 @@ pub fn parse_format_tail(s: &str) -> (Vec<String>, String, Vec<(String, String)>
         (bit_tokens, base, assigns)
     } else {
         // no & found (shouldn't happen for valid format)
-        (parts, String::new(), Vec::new())
+        let base=name.to_string();
+        (parts, base, Vec::new())
     }
 }
 
