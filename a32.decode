@@ -1,6 +1,6 @@
 # A32 conditional instructions
 #
-
+#  Copyright (c) 2019 Linaro, Ltd
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -52,7 +52,7 @@
 
 # Data-processing (register)
 
-@s_rrr_shi       ---- ... .... s:1 rn:4 rd:4    
+@s_rrr_shi       ---- ... .... s:1 rn:4 rd:4 shim:5 shty:2 . rm:4 \
                  &s_rrr_shi
 @s_rxr_shi       ---- ... .... s:1 .... rd:4 shim:5 shty:2 . rm:4 \
                  &s_rrr_shi rn=0
