@@ -13,8 +13,8 @@ pub struct Field {
 }
 
 impl Field {
-    pub fn output( writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, " fn extract(inst:u32,len:u32,pos:u32) -> u32 {{" )?;
+    pub fn output(writer: &mut dyn Write) -> io::Result<()> {
+        writeln!(writer, " fn extract(inst:u32,len:u32,pos:u32) -> u32 {{")?;
 
         writeln!(writer, " (inst >> len) & ((1u32 << pos) - 1)")?;
         writeln!(writer, "}}")?;
@@ -76,13 +76,13 @@ pub struct Format {
     pub name: String,
     pub base: String,                   // reference to &args name
     pub fields: HashMap<String, Field>, // extracted fields with pos+len
+    pub direct_assigns: Vec<String>,
     pub fixedbits: u64,
     pub fixedmask: u64,
 }
 
 impl Format {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
-        
         writeln!(
             writer,
             "pub fn extract_{}(inst:u32)->{}{{",
@@ -96,6 +96,9 @@ impl Format {
                 "{} : extract(inst,{},{}),",
                 field.name, field.len, field.pos
             )?;
+        }
+        for assign in self.direct_assigns.clone() {
+            writeln!(writer, "{},", assign)?;
         }
         writeln!(writer, "}}}}\n ")?;
 
@@ -145,7 +148,7 @@ pub fn split_first_token(s: &str) -> (String, String) {
 /// Parse format tail: bit tokens (left) and &base and assignments (right)
 /// Example rest: "---- ... s:1 rn:4 ... &s_rrr_shi rn=0"
 
-pub fn parse_format_tail(name:&str,s: &str) -> (Vec<String>, String, Vec<(String, String)>) {
+pub fn parse_format_tail(name: &str, s: &str) -> (Vec<String>, String, Vec<String>) {
     let parts = s
         .split_whitespace()
         .map(|s| s.to_string())
@@ -159,7 +162,6 @@ pub fn parse_format_tail(name:&str,s: &str) -> (Vec<String>, String, Vec<(String
             break;
         }
     }
-    
 
     if let Some(ai) = amp_index {
         let bit_tokens = parts[0..ai].to_vec(); //"---- s:1 rn:4 &s_rrr_shi rn=0 s=1"
@@ -167,19 +169,18 @@ pub fn parse_format_tail(name:&str,s: &str) -> (Vec<String>, String, Vec<(String
         let base = parts[ai][1..].to_string(); //extract base "s_rrr_shi"
 
         let mut assigns = Vec::new();
-
         for tok in parts.iter().skip(ai + 1) {
             if let Some(eq) = tok.find('=') {
                 let name = tok[..eq].to_string();
                 let val = tok[eq + 1..].to_string();
-                assigns.push((name, val));
+                assigns.push(format!("{}:{}", name, val));
             }
         }
 
         (bit_tokens, base, assigns)
     } else {
         // no & found (shouldn't happen for valid format)
-        let base=name.to_string();
+        let base = name.to_string();
         (parts, base, Vec::new())
     }
 }
@@ -189,7 +190,7 @@ pub fn parse_format(
     name: String,
     bit_tokens: &[String],
     base: &str,
-    assigns: &[(String, String)],
+    assigns: Vec<String>,
 ) -> Format {
     let mut current_pos: isize = 31;
     let mut fields: HashMap<String, Field> = HashMap::new();
@@ -238,21 +239,11 @@ pub fn parse_format(
         }
     }
 
-    // apply assignments like rn=0: set those field bits in fixedmask/fixedbits
-    for (name, valstr) in assigns {
-        if let Some(f) = fields.get(name) {
-            let val: u64 = valstr.parse().unwrap_or(0);
-            // clear previous bits for field and set according to value
-            fixedmask |= f.mask;
-            let v = (val & ((1u64 << f.len) - 1)) << f.pos;
-            fixedbits |= v;
-        }
-    }
-
     Format {
         name,
         base: base.to_string(),
         fields,
+        direct_assigns: assigns,
         fixedbits,
         fixedmask,
     }

@@ -4,7 +4,7 @@ use std::{
 };
 
 use transmuter::decode::{
-    self, Arguments, Field, Format, get_args, parse_format, parse_format_tail, split_first_token
+    self, Arguments, Field, Format, get_args, parse_format, parse_format_tail, split_first_token,
 };
 
 fn main() {
@@ -32,17 +32,12 @@ fn main() {
         } else if line.starts_with('@') {
             // @formatname <bittemplate tokens...> &base maybe assignments
             let (name, rest) = split_first_token(&line[1..]);
-            let (bit_tokens, base, assigns) = parse_format_tail(&name,&rest);
-            let  fmt = parse_format(name.to_string(), &bit_tokens, &base, &assigns);
+            let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
+            let fmt = parse_format(name.to_string(), &bit_tokens, &base, assigns);
             fmt.output(&mut file).unwrap();
             formats.insert(fmt.name.clone(), fmt);
         }
-
-
     }
-
-    
-
 
     // println!("\nFormats:");
     // for (k,v) in &formats { println!("  @{} -> {:?}", k, v); }
