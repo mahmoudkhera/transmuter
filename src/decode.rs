@@ -1,27 +1,12 @@
 use std::{
     collections::HashMap,
+    fs::{self, File},
     io::{self, Write},
 };
 
-/// Simple field representation (contiguous)
-#[derive(Debug, Clone)]
-pub struct Field {
-    pub name: String,
-    pub pos: usize, // LSB bit index (0..31)
-    pub len: usize,
-    pub mask: u64, // ((1<<len)-1) << pos
-}
-
-impl Field {
-    pub fn output(writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, " fn extract(inst:u32,len:u32,pos:u32) -> u32 {{")?;
-
-        writeln!(writer, " (inst >> len) & ((1u32 << pos) - 1)")?;
-        writeln!(writer, "}}")?;
-
-        Ok(())
-    }
-}
+use crate::field::{
+    Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field,
+};
 
 /// Arguments: &name line
 #[derive(Debug, Clone)]
@@ -42,6 +27,7 @@ impl Default for Arguments {
 impl Arguments {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
         writeln!(writer, "pub struct {} {{", self.name)?;
+        println!("argswork");
 
         for field in &self.fields {
             writeln!(writer, "    pub {}: u32,", field)?;
@@ -74,9 +60,8 @@ pub fn get_args(line: &str) -> Arguments {
 #[derive(Debug, Clone)]
 pub struct Format {
     pub name: String,
-    pub base: String,                   // reference to &args name
-    pub fields: HashMap<String, Field>, // extracted fields with pos+len
-    pub direct_assigns: Vec<String>,
+    pub base: String,
+    pub fields: HashMap<String, FieldType>,
     pub fixedbits: u64,
     pub fixedmask: u64,
 }
@@ -90,16 +75,10 @@ impl Format {
         )?;
 
         writeln!(writer, "{} {{ ", self.base)?;
-        for (_, field) in self.fields.iter() {
-            writeln!(
-                writer,
-                "{} : extract(inst,{},{}),",
-                field.name, field.len, field.pos
-            )?;
+        for (name, field) in &self.fields {
+            field.output(&name, writer)?;
         }
-        for assign in self.direct_assigns.clone() {
-            writeln!(writer, "{},", assign)?;
-        }
+
         writeln!(writer, "}}}}\n ")?;
 
         Ok(())
@@ -145,106 +124,46 @@ pub fn split_first_token(s: &str) -> (String, String) {
     (name, rest)
 }
 
-/// Parse format tail: bit tokens (left) and &base and assignments (right)
-/// Example rest: "---- ... s:1 rn:4 ... &s_rrr_shi rn=0"
+pub fn genrate_decode_tree() {
+    // read the snippet from a file or paste here
+    let input = fs::read_to_string("a32.decode").expect("read file");
+    // pre-process continuation lines ending with '\'
+    let joined = join_continuations(&input);
 
-pub fn parse_format_tail(name: &str, s: &str) -> (Vec<String>, String, Vec<String>) {
-    let parts = s
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
+    let mut args_map: HashMap<String, Arguments> = HashMap::new();
+    let mut fields: HashMap<String, FieldType> = HashMap::new();
+    let mut formats: HashMap<String, Format> = HashMap::new();
 
-    // find token that starts with '&'
-    let mut amp_index = None;
-    for (i, p) in parts.iter().enumerate() {
-        if p.starts_with('&') {
-            amp_index = Some(i);
-            break;
-        }
-    }
+    let mut file = File::create("output.rs").unwrap();
 
-    if let Some(ai) = amp_index {
-        let bit_tokens = parts[0..ai].to_vec(); //"---- s:1 rn:4 &s_rrr_shi rn=0 s=1"
-
-        let base = parts[ai][1..].to_string(); //extract base "s_rrr_shi"
-
-        let mut assigns = Vec::new();
-        for tok in parts.iter().skip(ai + 1) {
-            if let Some(eq) = tok.find('=') {
-                let name = tok[..eq].to_string();
-                let val = tok[eq + 1..].to_string();
-                assigns.push(format!("{}:{}", name, val));
-            }
+    for raw_line in joined.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
         }
 
-        (bit_tokens, base, assigns)
-    } else {
-        // no & found (shouldn't happen for valid format)
-        let base = name.to_string();
-        (parts, base, Vec::new())
-    }
-}
-
-/// Parse format: compute fixedmask/fixedbits from tokens and collect fields
-pub fn parse_format(
-    name: String,
-    bit_tokens: &[String],
-    base: &str,
-    assigns: Vec<String>,
-) -> Format {
-    let mut current_pos: isize = 31;
-    let mut fields: HashMap<String, Field> = HashMap::new();
-    let mut fixedmask: u64 = 0;
-    let mut fixedbits: u64 = 0;
-
-    for token in bit_tokens {
-        if token.chars().all(|c| c == '.' || c == '_') {
-            current_pos -= token.len() as isize;
-        } else if token.contains(':') {
-            let parts: Vec<&str> = token.split(':').collect();
-
-            let field_name = parts[0].to_string();
-            let len: isize = parts[1].parse().unwrap();
-            let pos = (current_pos - (len - 1)) as usize;
-            let mask = (((1u64 << len) - 1) as u64) << pos;
-
-            fields.insert(
-                field_name.clone(),
-                Field {
-                    name: field_name,
-                    pos,
-                    len: len as usize,
-                    mask,
-                },
-            );
-
-            current_pos -= len;
-        } else {
-            // token contains mixture of 0/1/other groups, handle each char
-            for ch in token.chars() {
-                if ch == '0' || ch == '1' {
-                    let pos = current_pos as usize;
-                    fixedmask |= 1u64 << pos;
-                    if ch == '1' {
-                        fixedbits |= 1u64 << pos;
-                    }
-                    current_pos -= 1;
-                } else if ch == '.' || ch == '-' {
-                    current_pos -= 1;
-                } else {
-                    // token like "000" handled above; otherwise unknown char
-                    current_pos -= 1;
-                }
-            }
+        if line.starts_with('&') {
+            let arg = get_args(line);
+            args_map.insert(arg.name.clone(), arg);
+        } else if line.starts_with('%') {
+            let (name, field) = parse_multi_field(&line);
+            fields.insert(name.to_string(), field);
+        } else if line.starts_with('@') {
+            // @formatname <bittemplate tokens...> &base maybe assignments
+            let (name, rest) = split_first_token(&line[1..]);
+            let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
+            let fmt = parse_format(name.to_string(), &bit_tokens, &base, assigns, &mut fields);
+            formats.insert(fmt.name.clone(), fmt);
         }
     }
+    let mut file = File::create("output.rs").unwrap();
 
-    Format {
-        name,
-        base: base.to_string(),
-        fields,
-        direct_assigns: assigns,
-        fixedbits,
-        fixedmask,
+    Field::output(&mut file).unwrap();
+    MultiField::output(&mut file).unwrap();
+    for (_, arg) in args_map {
+        arg.output(&mut file).unwrap();
+    }
+    for (_, fmt) in formats {
+        fmt.output(&mut file).unwrap();
     }
 }
