@@ -27,7 +27,6 @@ impl Default for Arguments {
 impl Arguments {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
         writeln!(writer, "pub struct {} {{", self.name)?;
-        println!("argswork");
 
         for field in &self.fields {
             writeln!(writer, "    pub {}: u32,", field)?;
@@ -160,6 +159,7 @@ pub fn genrate_decode_tree() {
 
     Field::output(&mut file).unwrap();
     MultiField::output(&mut file).unwrap();
+    MultiField::output_functions(&mut file).unwrap();
     for (_, arg) in args_map {
         arg.output(&mut file).unwrap();
     }

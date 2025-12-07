@@ -38,7 +38,7 @@ impl Field {
         Ok(())
     }
 
-    fn get_pos_len(&self) -> (usize, usize) {
+    pub fn get_pos_len(&self) -> (usize, usize) {
         (self.pos, self.len)
     }
 }
@@ -46,44 +46,111 @@ impl Field {
 #[derive(Debug, Clone)]
 pub struct MultiField {
     pub subs: Vec<Box<Field>>,
-
     pub mask: u64,
+    pub function: Option<String>,
 }
 
 impl MultiField {
     pub fn output(writer: &mut dyn Write) -> io::Result<()> {
+        // Generate multi-field extraction for 2 fields
         writeln!(
             writer,
-            " fn extract_mul(inst:u32,len1:u32,pos1:u32,len2:u32,pos2:u32) -> u32 {{"
+            " fn extract_mul2(inst:u32,pos1:u32,len1:u32,pos2:u32,len2:u32) -> u32 {{"
         )?;
-
+        writeln!(writer, "    let mask1 = (1u32 << len1) - 1;")?;
+        writeln!(writer, "    let mask2 = (1u32 << len2) - 1;")?;
+        writeln!(writer, "    let field1 = (inst >> pos1) & mask1;")?;
+        writeln!(writer, "    let field2 = (inst >> pos2) & mask2;")?;
         writeln!(
             writer,
-            "    // mask = (1 << len) - 1
-    let mask1 = (1u32 << len1) - 1;
-    let mask2 = (1u32 << len2) - 1;
-
-    let field1 = (inst >> pos1) & mask1;
-    let field2 = (inst >> pos2) & mask2;
-
-    // concatenate field1 (lower bits) and field2 (upper bits)
-    field1 | (field2 << len1)"
+            "    // concatenate field1 (lower bits) and field2 (upper bits)"
         )?;
+        writeln!(writer, "    field1 | (field2 << len1)")?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
 
-        writeln!(writer, "}}")?;
+        // Generate multi-field extraction for 3 fields
+        writeln!(
+            writer,
+            " fn extract_mul3(inst:u32,pos1:u32,len1:u32,pos2:u32,len2:u32,pos3:u32,len3:u32) -> u32 {{"
+        )?;
+        writeln!(writer, "    let mask1 = (1u32 << len1) - 1;")?;
+        writeln!(writer, "    let mask2 = (1u32 << len2) - 1;")?;
+        writeln!(writer, "    let mask3 = (1u32 << len3) - 1;")?;
+        writeln!(writer, "    let field1 = (inst >> pos1) & mask1;")?;
+        writeln!(writer, "    let field2 = (inst >> pos2) & mask2;")?;
+        writeln!(writer, "    let field3 = (inst >> pos3) & mask3;")?;
+        writeln!(
+            writer,
+            "    field1 | (field2 << len1) | (field3 << (len1 + len2))"
+        )?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
+
+        // Generate multi-field extraction for 4 fields
+        writeln!(
+            writer,
+            " fn extract_mul4(inst:u32,pos1:u32,len1:u32,pos2:u32,len2:u32,pos3:u32,len3:u32,pos4:u32,len4:u32) -> u32 {{"
+        )?;
+        writeln!(writer, "    let mask1 = (1u32 << len1) - 1;")?;
+        writeln!(writer, "    let mask2 = (1u32 << len2) - 1;")?;
+        writeln!(writer, "    let mask3 = (1u32 << len3) - 1;")?;
+        writeln!(writer, "    let mask4 = (1u32 << len4) - 1;")?;
+        writeln!(writer, "    let field1 = (inst >> pos1) & mask1;")?;
+        writeln!(writer, "    let field2 = (inst >> pos2) & mask2;")?;
+        writeln!(writer, "    let field3 = (inst >> pos3) & mask3;")?;
+        writeln!(writer, "    let field4 = (inst >> pos4) & mask4;")?;
+        writeln!(
+            writer,
+            "    field1 | (field2 << len1) | (field3 << (len1 + len2)) | (field4 << (len1 + len2 + len3))"
+        )?;
+        writeln!(writer, " }}")?;
 
         Ok(())
     }
 
-    fn get_subs_paramaters(&self) -> Vec<(usize, usize)> {
+    pub fn output_functions(writer: &mut dyn Write) -> io::Result<()> {
+        // Common transformation functions
+        writeln!(writer, " fn times_2(val:u32) -> u32 {{")?;
+        writeln!(writer, "    val << 1")?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
+
+        writeln!(writer, " fn times_4(val:u32) -> u32 {{")?;
+        writeln!(writer, "    val << 2")?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
+
+        writeln!(writer, " fn times_8(val:u32) -> u32 {{")?;
+        writeln!(writer, "    val << 3")?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
+
+        // ARM-specific functions
+        writeln!(writer, " fn expand_imm(val:u32) -> u32 {{")?;
+        writeln!(writer, "    // ARM immediate expansion logic")?;
+        writeln!(writer, "    let rotate = (val >> 8) & 0xF;")?;
+        writeln!(writer, "    let imm = val & 0xFF;")?;
+        writeln!(writer, "    imm.rotate_right(rotate * 2)")?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
+
+        writeln!(writer, " fn negate(val:u32) -> u32 {{")?;
+        writeln!(writer, "    (!val).wrapping_add(1)")?;
+        writeln!(writer, " }}")?;
+
+        Ok(())
+    }
+
+    fn get_subs_parameters(&self) -> Vec<(usize, usize, bool)> {
         self.subs
             .iter()
-            .map(|field| (field.pos, field.len))
+            .map(|field| (field.pos, field.len, field.is_signed))
             .collect()
     }
 
-    fn get_name(&self) -> String {
-        self.subs[1].name.clone()
+    pub fn get_name(&self) -> String {
+        self.subs[0].name.clone()
     }
 }
 
@@ -94,26 +161,41 @@ pub struct ConstField {
 }
 
 #[derive(Debug, Clone)]
+pub struct ParameterField {
+    pub function: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum FieldType {
     Simple(Field),
     Multi(MultiField),
     Const(ConstField),
+    Parameter(ParameterField),
 }
+
 impl FieldType {
     pub fn output(&self, name: &str, writer: &mut dyn Write) -> io::Result<()> {
         match self {
             FieldType::Simple(f) => Self::output_simple(f, name, writer),
             FieldType::Multi(m) => Self::output_multi(m, name, writer),
             FieldType::Const(c) => Self::output_const(c, name, writer),
+            FieldType::Parameter(p) => Self::output_parameter(p, name, writer),
         }
     }
-
     fn output_simple(f: &Field, name: &str, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(
-            writer,
-            "{} : extract_simple(inst,{},{}),",
-            f.name, f.len, f.pos
-        )?;
+        if f.is_signed {
+            writeln!(
+                writer,
+                "{} : extract_signed(inst,{},{}) as u32,",
+                name, f.pos, f.len
+            )?;
+        } else {
+            writeln!(
+                writer,
+                "{} : extract_simple(inst,{},{}),",
+                name, f.pos, f.len
+            )?;
+        }
         Ok(())
     }
 
@@ -122,22 +204,146 @@ impl FieldType {
         name: &str,
         writer: &mut dyn Write,
     ) -> io::Result<()> {
-        let subsparmaters = multi_field.get_subs_paramaters();
+        let subs_params = multi_field.get_subs_parameters();
+        let num_fields = subs_params.len();
 
-        write!(writer, "{} : extract_mul(inst", name)?;
+        match num_fields {
+            // Single field (with or without function)
+            1 => {
+                let (pos, len, is_signed) = subs_params[0];
 
-        for (len, pos) in subsparmaters {
-            println!("{}  {}", len, pos);
+                write!(writer, "{} : ", name)?;
 
-            write!(writer, ",{} ,{}", len, pos)?;
+                // If there's a function, wrap the extraction
+                if let Some(func) = &multi_field.function {
+                    write!(writer, "{}(", func)?;
+                }
+
+                // Extract the field
+                if is_signed {
+                    write!(writer, "extract_signed(inst,{},{}) as u32", pos, len)?;
+                } else {
+                    write!(writer, "extract_simple(inst,{},{})", pos, len)?;
+                }
+
+                // Close function call if present
+                if multi_field.function.is_some() {
+                    write!(writer, ")")?;
+                }
+
+                writeln!(writer, ",")?;
+            }
+
+            // Multiple fields (with or without function)
+            2 => {
+                let (pos1, len1, _) = subs_params[0];
+                let (pos2, len2, _) = subs_params[1];
+
+                write!(writer, "{} : ", name)?;
+
+                // If there's a function, wrap the extraction
+                if let Some(func) = &multi_field.function {
+                    write!(writer, "{}(", func)?;
+                }
+
+                write!(
+                    writer,
+                    "extract_mul2(inst,{},{},{},{})",
+                    pos1, len1, pos2, len2
+                )?;
+
+                // Close function call if present
+                if multi_field.function.is_some() {
+                    write!(writer, ")")?;
+                }
+
+                writeln!(writer, ",")?;
+            }
+
+            3 => {
+                let (pos1, len1, _) = subs_params[0];
+                let (pos2, len2, _) = subs_params[1];
+                let (pos3, len3, _) = subs_params[2];
+
+                write!(writer, "{} : ", name)?;
+
+                if let Some(func) = &multi_field.function {
+                    write!(writer, "{}(", func)?;
+                }
+
+                write!(
+                    writer,
+                    "extract_mul3(inst,{},{},{},{},{},{})",
+                    pos1, len1, pos2, len2, pos3, len3
+                )?;
+
+                if multi_field.function.is_some() {
+                    write!(writer, ")")?;
+                }
+
+                writeln!(writer, ",")?;
+            }
+
+            4 => {
+                let (pos1, len1, _) = subs_params[0];
+                let (pos2, len2, _) = subs_params[1];
+                let (pos3, len3, _) = subs_params[2];
+                let (pos4, len4, _) = subs_params[3];
+
+                write!(writer, "{} : ", name)?;
+
+                if let Some(func) = &multi_field.function {
+                    write!(writer, "{}(", func)?;
+                }
+
+                write!(
+                    writer,
+                    "extract_mul4(inst,{},{},{},{},{},{},{},{})",
+                    pos1, len1, pos2, len2, pos3, len3, pos4, len4
+                )?;
+
+                if multi_field.function.is_some() {
+                    write!(writer, ")")?;
+                }
+
+                writeln!(writer, ",")?;
+            }
+
+            _ => {
+                // For more than 4 fields, generate generic extraction code
+                write!(writer, "{} : {{", name)?;
+                writeln!(writer, "    let mut result = 0u32;")?;
+                writeln!(writer, "    let mut shift = 0u32;")?;
+
+                for (pos, len, _) in subs_params {
+                    writeln!(
+                        writer,
+                        "    result |= ((inst >> {}) & ((1u32 << {}) - 1)) << shift;",
+                        pos, len
+                    )?;
+                    writeln!(writer, "    shift += {};", len)?;
+                }
+
+                if let Some(func) = &multi_field.function {
+                    writeln!(writer, "    {}(result)", func)?;
+                } else {
+                    writeln!(writer, "    result")?;
+                }
+
+                writeln!(writer, "}},")?;
+            }
         }
-        writeln!(writer, "),")?;
+
         Ok(())
     }
 
     fn output_const(c: &ConstField, name: &str, writer: &mut dyn Write) -> io::Result<()> {
         writeln!(writer, "{}:{},", name, c.value)?;
+        Ok(())
+    }
 
+    fn output_parameter(p: &ParameterField, name: &str, writer: &mut dyn Write) -> io::Result<()> {
+        writeln!(writer, "{} : {}(ctx),", name, p.function)?;
         Ok(())
     }
 }
@@ -209,7 +415,7 @@ fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldTy
             (false, len_spec)
         };
 
-        if let Ok(len) = len_spec.parse::<isize>() {
+        if let Ok(len) = len_str.parse::<isize>() {
             let pos = (current_pos - (len - 1)) as usize;
             let mask = (((1u64 << len) - 1) as u64) << pos;
 
@@ -220,6 +426,7 @@ fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldTy
                 mask,
                 is_signed,
             };
+
             return Some((field_name, FieldType::Simple(field), current_pos - len));
         }
     }
@@ -280,7 +487,6 @@ pub fn parse_format(
             }
         }
     }
-    println!("{:?}", ass);
     // Process asments: "rn=0", "imm=%field", "val=!function", etc.
     for (fname, valstr) in &ass {
         if valstr.starts_with('%') {
@@ -293,7 +499,6 @@ pub fn parse_format(
             let field = total_fields.get(ref_name).unwrap().clone();
             fields.insert(fname.clone(), field);
 
-            println!("{:?}", fields);
         } else {
             // Constant asment: "field=0", "field=-5", etc.
             if let Ok(val) = valstr.parse::<i64>() {
@@ -325,8 +530,13 @@ pub fn parse_format(
     }
 }
 
-/// Parse a multi-field definition (for compound fields)
-/// Example: "%imm24  0:s8 8:8 16:8"
+// Parse a multi-field definition (for compound fields)
+/// Examples:
+/// - "%a32extrot  8:4 !function=times_2"         (single field + function)
+/// - "%imm24  0:8 8:8 16:8"                      (multiple fields, no function)
+/// - "%disp12  0:s1 1:1 2:10 !function=process"  (multiple fields + function)
+/// - "%some_param !function=get_value"           (parameter with no fields)
+
 pub fn parse_multi_field(s: &str) -> (String, FieldType) {
     let mut parts = s.split_whitespace();
     let name = parts.next().unwrap_or("").to_string();
@@ -334,8 +544,15 @@ pub fn parse_multi_field(s: &str) -> (String, FieldType) {
 
     let mut subs = Vec::new();
     let mut multi_mask = 0u64;
+    let mut function = None;
 
     for part in parts {
+        // Check if this is a function specification
+        if part.starts_with("!function=") {
+            function = Some(part[10..].to_string());
+            continue;
+        }
+
         let token: Vec<&str> = part.split(':').collect();
         if token.len() != 2 {
             continue;
@@ -351,7 +568,7 @@ pub fn parse_multi_field(s: &str) -> (String, FieldType) {
             (false, len_spec)
         };
 
-        let len: usize = len_spec.parse().unwrap_or(0);
+        let len: usize = len_str.parse().unwrap_or(0);
         let mask = (((1u64 << len) - 1) as u64) << pos;
         multi_mask |= mask;
 
@@ -366,9 +583,18 @@ pub fn parse_multi_field(s: &str) -> (String, FieldType) {
         subs.push(Box::new(field));
     }
 
+    // Check if this is a parameter (function with no fields)
+    if subs.is_empty() && function.is_some() {
+        let param = ParameterField {
+            function: function.unwrap(),
+        };
+        return (name, FieldType::Parameter(param));
+    }
+
     let multi = MultiField {
         subs,
         mask: multi_mask,
+        function,
     };
 
     (name, FieldType::Multi(multi))
