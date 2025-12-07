@@ -11,14 +11,30 @@ pub struct Field {
     pub pos: usize,
     pub len: usize,
     pub mask: u64,
+    pub is_signed: bool,
 }
 impl Field {
     pub fn output(writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, " fn extract_simple(inst:u32,len:u32,pos:u32) -> u32 {{")?;
+        writeln!(
+            writer,
+            " fn extract_simple(inst:u32,pos:u32,len:u32) -> u32 {{"
+        )?;
+        writeln!(writer, "    (inst >> pos) & ((1u32 << len) - 1)")?;
+        writeln!(writer, " }}")?;
+        writeln!(writer)?;
 
-        writeln!(writer, " (inst >> len) & ((1u32 << pos) - 1)")?;
-        writeln!(writer, "}}")?;
-
+        writeln!(
+            writer,
+            " fn extract_signed(inst:u32,pos:u32,len:u32) -> i32 {{"
+        )?;
+        writeln!(writer, "    let val = (inst >> pos) & ((1u32 << len) - 1);")?;
+        writeln!(writer, "    // Sign extend")?;
+        writeln!(writer, "    if (val & (1u32 << (len - 1))) != 0 {{")?;
+        writeln!(writer, "        (val | (!((1u32 << len) - 1))) as i32")?;
+        writeln!(writer, "    }} else {{")?;
+        writeln!(writer, "        val as i32")?;
+        writeln!(writer, "    }}")?;
+        writeln!(writer, " }}")?;
         Ok(())
     }
 
@@ -93,7 +109,11 @@ impl FieldType {
     }
 
     fn output_simple(f: &Field, name: &str, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "{} : extract_simple(inst,{},{}),", f.name, f.len, f.pos)?;
+        writeln!(
+            writer,
+            "{} : extract_simple(inst,{},{}),",
+            f.name, f.len, f.pos
+        )?;
         Ok(())
     }
 
@@ -107,8 +127,7 @@ impl FieldType {
         write!(writer, "{} : extract_mul(inst", name)?;
 
         for (len, pos) in subsparmaters {
-
-                println!("{}  {}",len,pos);
+            println!("{}  {}", len, pos);
 
             write!(writer, ",{} ,{}", len, pos)?;
         }
@@ -117,7 +136,7 @@ impl FieldType {
     }
 
     fn output_const(c: &ConstField, name: &str, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "{}:{},",name, c.value)?;
+        writeln!(writer, "{}:{},", name, c.value)?;
 
         Ok(())
     }
@@ -183,6 +202,13 @@ fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldTy
         let field_name = parts[0].to_string();
         let len_spec = parts[1];
 
+        // Check if it's signed (starts with 's')
+        let (is_signed, len_str) = if len_spec.starts_with('s') {
+            (true, &len_spec[1..])
+        } else {
+            (false, len_spec)
+        };
+
         if let Ok(len) = len_spec.parse::<isize>() {
             let pos = (current_pos - (len - 1)) as usize;
             let mask = (((1u64 << len) - 1) as u64) << pos;
@@ -192,8 +218,8 @@ fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldTy
                 pos,
                 len: len as usize,
                 mask,
+                is_signed,
             };
-
             return Some((field_name, FieldType::Simple(field), current_pos - len));
         }
     }
@@ -318,6 +344,13 @@ pub fn parse_multi_field(s: &str) -> (String, FieldType) {
         let pos: usize = token[0].parse().unwrap_or(0);
         let len_spec = token[1];
 
+        // Check for signed fields
+        let (is_signed, len_str) = if len_spec.starts_with('s') {
+            (true, &len_spec[1..])
+        } else {
+            (false, len_spec)
+        };
+
         let len: usize = len_spec.parse().unwrap_or(0);
         let mask = (((1u64 << len) - 1) as u64) << pos;
         multi_mask |= mask;
@@ -327,6 +360,7 @@ pub fn parse_multi_field(s: &str) -> (String, FieldType) {
             pos,
             len,
             mask,
+            is_signed,
         };
 
         subs.push(Box::new(field));
