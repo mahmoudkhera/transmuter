@@ -3,8 +3,6 @@ use std::{
     io::{self, Write},
 };
 
-use crate::decode::Format;
-
 #[derive(Debug, Clone)]
 pub struct Field {
     pub name: String,
@@ -441,7 +439,8 @@ pub fn parse_format(
     base: &str,
     ass: Vec<(String, String)>,
     total_fields: &mut HashMap<String, FieldType>,
-) -> Format {
+    args_map: &mut HashMap<String, crate::decode::Arguments>,
+) -> crate::decode::Format {
     let mut current_pos: isize = 31;
     let mut fields: HashMap<String, FieldType> = HashMap::new();
     let mut fixedmask: u64 = 0;
@@ -455,7 +454,7 @@ pub fn parse_format(
             continue;
         }
 
-        // Handle field definitions: "rd:4", "imm:8", etc.
+        // Handle field definitions: "rd:4", "imm:s8", etc.
         if let Some((field_name, field_type, new_pos)) = parse_field_token(token, current_pos) {
             fields.insert(field_name, field_type);
             current_pos = new_pos;
@@ -487,20 +486,27 @@ pub fn parse_format(
             }
         }
     }
-    // Process asments: "rn=0", "imm=%field", "val=!function", etc.
+
+    // Process assignments: "rn=0", "imm=%field", "val=!function", etc.
     for (fname, valstr) in &ass {
         if valstr.starts_with('%') {
             // Field reference: "field=%other_field"
-            // This creates a reference to another field (handled later)
-            // For now, treat as NamedField
             let ref_name = &valstr[1..];
-            // We'd need to look up the referenced field's properties
 
-            let field = total_fields.get(ref_name).unwrap().clone();
-            fields.insert(fname.clone(), field);
-
+            if let Some(field) = total_fields.get(ref_name) {
+                fields.insert(fname.clone(), field.clone());
+            } else {
+                println!("Warning: Referenced field '{}' not found", ref_name);
+            }
+        } else if valstr.starts_with('!') {
+            // Function reference: "field=!function_name"
+            let func_name = &valstr[1..];
+            let param_field = ParameterField {
+                function: func_name.to_string(),
+            };
+            fields.insert(fname.clone(), FieldType::Parameter(param_field));
         } else {
-            // Constant asment: "field=0", "field=-5", etc.
+            // Constant assignment: "field=0", "field=-5", etc.
             if let Ok(val) = valstr.parse::<i64>() {
                 let const_field = ConstField {
                     value: val,
@@ -521,7 +527,23 @@ pub fn parse_format(
         }
     }
 
-    Format {
+    // Update inferred argument set with actual fields from this format
+    if let Some(arg_set) = args_map.get_mut(base) {
+        if arg_set.fields.is_empty() && !arg_set.is_extern {
+            // This is an inferred argument set - populate it with fields
+            arg_set.fields = fields
+                .keys()
+                .map(|k| (k.clone(), "u32".to_string()))
+                .collect();
+            println!(
+                "  Populated inferred argument set '{}' with {} fields",
+                base,
+                arg_set.fields.len()
+            );
+        }
+    }
+
+    crate::decode::Format {
         name,
         base: base.to_string(),
         fields,

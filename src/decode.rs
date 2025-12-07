@@ -7,12 +7,76 @@ use std::{
 use crate::field::{
     Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field,
 };
+pub fn genrate_decode_tree() {
+    // read the snippet from a file or paste here
+    let input = fs::read_to_string("a32.decode").expect("read file");
+    // pre-process continuation lines ending with '\'
+    let joined = join_continuations(&input);
+
+    let mut args_map: HashMap<String, Arguments> = HashMap::new();
+    let mut fields: HashMap<String, FieldType> = HashMap::new();
+    let mut formats: HashMap<String, Format> = HashMap::new();
+
+    for raw_line in joined.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if line.starts_with('&') {
+            let arg = get_args(line);
+            args_map.insert(arg.name.clone(), arg);
+        } else if line.starts_with('%') {
+            let (name, field) = parse_multi_field(&line);
+            fields.insert(name.to_string(), field);
+        } else if line.starts_with('@') {
+            let (name, rest) = split_first_token(&line[1..]);
+            let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
+
+            // Check if argument set exists
+            if !args_map.contains_key(&base) {
+                println!("  Inferring argument set: {}", base);
+
+                // Create empty placeholder
+                let inferred_args = Arguments {
+                    name: base.clone(),
+                    fields: Vec::new(), // Empty - will be filled later
+                    is_extern: false,
+                };
+                args_map.insert(base.clone(), inferred_args);
+            }
+
+            // Parse format with mutable args_map
+            let fmt = parse_format(
+                name,
+                &bit_tokens,
+                &base,
+                assigns,
+                &mut fields,
+                &mut args_map,
+            );
+            formats.insert(fmt.name.clone(), fmt);
+        }
+    }
+    let mut file = File::create("output.rs").unwrap();
+
+    Field::output(&mut file).unwrap();
+    MultiField::output(&mut file).unwrap();
+    MultiField::output_functions(&mut file).unwrap();
+    for (_, arg) in args_map {
+        arg.output(&mut file).unwrap();
+    }
+    for (_, fmt) in formats {
+        fmt.output(&mut file).unwrap();
+    }
+}
 
 /// Arguments: &name line
 #[derive(Debug, Clone)]
 pub struct Arguments {
     pub name: String,
-    pub fields: Vec<String>, // order
+    pub fields: Vec<(String, String)>, // (field_name, field_type)
+    pub is_extern: bool,
 }
 
 impl Default for Arguments {
@@ -20,42 +84,76 @@ impl Default for Arguments {
         Self {
             name: Default::default(),
             fields: Default::default(),
+            is_extern: false,
         }
     }
 }
 
 impl Arguments {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "pub struct {} {{", self.name)?;
+        // Don't generate struct for extern arguments
+        if self.is_extern {
+            writeln!(writer, "// extern struct: {}", self.name)?;
+            return Ok(());
+        }
 
-        for field in &self.fields {
-            writeln!(writer, "    pub {}: u32,", field)?;
+        writeln!(writer, "#[derive(Debug, Clone)]")?;
+        writeln!(writer, "pub struct arg_{} {{", self.name)?;
+
+        for (field_name, field_type) in &self.fields {
+            writeln!(writer, "    pub {}: {},", field_name, field_type)?;
         }
         writeln!(writer, "}}")?;
+        writeln!(writer)?;
 
         Ok(())
     }
 }
 
+/// Parse &args line with optional types and !extern flag
+/// Examples:
+///   &reg3       ra rb rc
+///   &loadstore  reg base offset
+///   &longldst   reg base offset:int64_t
+///   &extern_arg field1 field2 !extern
 pub fn get_args(line: &str) -> Arguments {
     let mut parts = line.split_whitespace();
 
     if let Some(name) = parts.next() {
-        // remove leading '&'
+        // Remove leading '&'
         let clean_name = name.trim_start_matches('&').to_string();
 
-        let fields: Vec<String> = parts.map(|s| s.to_string()).collect();
+        let mut fields = Vec::new();
+        let mut is_extern = false;
+
+        for part in parts {
+            if part == "!extern" {
+                is_extern = true;
+                continue;
+            }
+
+            // Check if field has explicit type: "field:type"
+            if let Some(colon_pos) = part.find(':') {
+                let field_name = part[..colon_pos].to_string();
+                let field_type = part[colon_pos + 1..].to_string();
+                fields.push((field_name, field_type));
+            } else {
+                // Default type is u32
+                fields.push((part.to_string(), "u32".to_string()));
+            }
+        }
 
         return Arguments {
             name: clean_name,
             fields,
+            is_extern,
         };
     }
 
     Arguments::default()
 }
 
-/// Format: @name line (bit template + &base and optional assignments)
+// Format: @name line (bit template + &base and optional assignments)
 #[derive(Debug, Clone)]
 pub struct Format {
     pub name: String,
@@ -69,16 +167,20 @@ impl Format {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
         writeln!(
             writer,
-            "pub fn extract_{}(inst:u32)->{}{{",
+            "pub fn extract_{}(inst: u32) -> arg_{} {{",
             self.name, self.base
         )?;
 
-        writeln!(writer, "{} {{ ", self.base)?;
+        writeln!(writer, "    arg_{} {{", self.base)?;
+
         for (name, field) in &self.fields {
-            field.output(&name, writer)?;
+            write!(writer, "        ")?;
+            field.output(name, writer)?;
         }
 
-        writeln!(writer, "}}}}\n ")?;
+        writeln!(writer, "    }}")?;
+        writeln!(writer, "}}")?;
+        writeln!(writer)?;
 
         Ok(())
     }
@@ -121,49 +223,4 @@ pub fn split_first_token(s: &str) -> (String, String) {
     let rest = it.collect::<Vec<_>>().join(" ");
 
     (name, rest)
-}
-
-pub fn genrate_decode_tree() {
-    // read the snippet from a file or paste here
-    let input = fs::read_to_string("a32.decode").expect("read file");
-    // pre-process continuation lines ending with '\'
-    let joined = join_continuations(&input);
-
-    let mut args_map: HashMap<String, Arguments> = HashMap::new();
-    let mut fields: HashMap<String, FieldType> = HashMap::new();
-    let mut formats: HashMap<String, Format> = HashMap::new();
-
-    let mut file = File::create("output.rs").unwrap();
-
-    for raw_line in joined.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        if line.starts_with('&') {
-            let arg = get_args(line);
-            args_map.insert(arg.name.clone(), arg);
-        } else if line.starts_with('%') {
-            let (name, field) = parse_multi_field(&line);
-            fields.insert(name.to_string(), field);
-        } else if line.starts_with('@') {
-            // @formatname <bittemplate tokens...> &base maybe assignments
-            let (name, rest) = split_first_token(&line[1..]);
-            let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
-            let fmt = parse_format(name.to_string(), &bit_tokens, &base, assigns, &mut fields);
-            formats.insert(fmt.name.clone(), fmt);
-        }
-    }
-    let mut file = File::create("output.rs").unwrap();
-
-    Field::output(&mut file).unwrap();
-    MultiField::output(&mut file).unwrap();
-    MultiField::output_functions(&mut file).unwrap();
-    for (_, arg) in args_map {
-        arg.output(&mut file).unwrap();
-    }
-    for (_, fmt) in formats {
-        fmt.output(&mut file).unwrap();
-    }
 }

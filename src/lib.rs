@@ -1,3 +1,3 @@
 pub mod decode;
-pub mod tests;
 pub mod field;
+pub mod tests;
