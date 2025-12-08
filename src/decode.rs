@@ -7,7 +7,7 @@ use std::{
 use crate::field::{
     Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field,
 };
-pub fn genrate_decode_tree() {
+pub fn genrate_decode_file() -> io::Result<()> {
     // read the snippet from a file or paste here
     let input = fs::read_to_string("a32.decode").expect("read file");
     // pre-process continuation lines ending with '\'
@@ -58,17 +58,39 @@ pub fn genrate_decode_tree() {
             formats.insert(fmt.name.clone(), fmt);
         }
     }
-    let mut file = File::create("output.rs").unwrap();
 
-    Field::output(&mut file).unwrap();
-    MultiField::output(&mut file).unwrap();
-    MultiField::output_functions(&mut file).unwrap();
-    for (_, arg) in args_map {
-        arg.output(&mut file).unwrap();
+    // Create output file
+    let output_path = "output.rs";
+    let mut file = File::create(output_path)?;
+
+    // Write header
+    write_header(&mut file)?;
+
+    // Write extraction helper functions
+    writeln!(file, "// ===== Extraction Helper Functions =====")?;
+    writeln!(file)?;
+    Field::output(&mut file)?;
+    writeln!(file)?;
+    MultiField::output(&mut file)?;
+    writeln!(file)?;
+    MultiField::output_functions(&mut file)?;
+    writeln!(file)?;
+
+    // Write argument structures
+    writeln!(file, "// ===== Argument Structures =====")?;
+    writeln!(file)?;
+    for (_, arg) in &args_map {
+        arg.output(&mut file)?;
     }
-    for (_, fmt) in formats {
-        fmt.output(&mut file).unwrap();
+
+    // Write format extraction functions
+    writeln!(file, "// ===== Format Extraction Functions =====")?;
+    writeln!(file)?;
+    for (_, fmt) in &formats {
+        fmt.output(&mut file)?;
     }
+
+    Ok(())
 }
 
 /// Arguments: &name line
@@ -90,6 +112,16 @@ impl Default for Arguments {
 }
 
 impl Arguments {
+    /// Create a new Arguments instance
+    pub fn new(name: String, fields: Vec<(String, String)>, is_extern: bool) -> Self {
+        Self {
+            name,
+            fields,
+            is_extern,
+        }
+    }
+
+    /// Generate Rust struct code for this argument set
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
         // Don't generate struct for extern arguments
         if self.is_extern {
@@ -97,12 +129,19 @@ impl Arguments {
             return Ok(());
         }
 
-        writeln!(writer, "#[derive(Debug, Clone)]")?;
+        // Skip empty argument sets
+        if self.fields.is_empty() {
+            writeln!(writer, "// Warning: Empty argument set: {}", self.name)?;
+            return Ok(());
+        }
+
+        writeln!(writer, "#[derive(Debug, Clone, PartialEq)]")?;
         writeln!(writer, "pub struct arg_{} {{", self.name)?;
 
         for (field_name, field_type) in &self.fields {
             writeln!(writer, "    pub {}: {},", field_name, field_type)?;
         }
+
         writeln!(writer, "}}")?;
         writeln!(writer)?;
 
@@ -153,7 +192,7 @@ pub fn get_args(line: &str) -> Arguments {
     Arguments::default()
 }
 
-// Format: @name line (bit template + &base and optional assignments)
+/// Format: @name line (bit template + &base and optional assignments)
 #[derive(Debug, Clone)]
 pub struct Format {
     pub name: String,
@@ -214,8 +253,18 @@ pub fn join_continuations(s: &str) -> String {
     output
 }
 
-/// Split first token and the rest of the line
+/// Write the file header with metadata and compiler directives
+fn write_header(writer: &mut dyn Write) -> io::Result<()> {
+    writeln!(writer, "// Auto-generated from a32.decode")?;
+    writeln!(writer, "// Do not edit manually")?;
+    writeln!(writer)?;
+    writeln!(writer, "#![allow(non_camel_case_types)]")?;
+    writeln!(writer, "#![allow(clippy::all)]")?;
+    writeln!(writer)?;
+    Ok(())
+}
 
+/// Split first token and the rest of the line
 pub fn split_first_token(s: &str) -> (String, String) {
     let mut it = s.split_whitespace();
     let name = it.next().unwrap_or("").to_string();
