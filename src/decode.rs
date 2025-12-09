@@ -3,10 +3,16 @@ use std::{
     fs::{self, File},
     io::{self, Write},
 };
+use crate::{
+    field::{Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field},
+    pattern::{GroupType, PatternGroup, parse_pattern},
+};
 
-use crate::{field::{
-    Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field,
-}, pattern::{GroupType, PatternGroup, parse_pattern}};
+
+
+
+
+
 pub fn genrate_decode_file() -> io::Result<()> {
     // read the snippet from a file or paste here
     let input = fs::read_to_string("a32.decode").expect("read file");
@@ -33,25 +39,31 @@ pub fn genrate_decode_file() -> io::Result<()> {
             indent_level += 1;
             let new_group = PatternGroup::new(GroupType::Overlap, indent_level);
             group_stack.push(new_group);
-            println!("{}[GROUP {{] Overlap group start", "  ".repeat(indent_level));
+            println!(
+                "{}[GROUP {{] Overlap group start",
+                "  ".repeat(indent_level)
+            );
             continue;
         }
-        
+
         if line == "[" {
             indent_level += 1;
             let new_group = PatternGroup::new(GroupType::NoOverlap, indent_level);
             group_stack.push(new_group);
-            println!("{}[GROUP [] No-overlap group start", "  ".repeat(indent_level));
+            println!(
+                "{}[GROUP [] No-overlap group start",
+                "  ".repeat(indent_level)
+            );
             continue;
         }
-        
+
         if line == "}" || line == "]" {
             if group_stack.len() > 1 {
                 let completed_group = group_stack.pop().unwrap();
                 let group_char = if line == "}" { "}" } else { "]" };
                 println!("{}[GROUP {}] End", "  ".repeat(indent_level), group_char);
                 indent_level -= 1;
-                
+
                 if let Some(parent) = group_stack.last_mut() {
                     parent.add_subgroup(completed_group);
                 }
@@ -94,12 +106,16 @@ pub fn genrate_decode_file() -> io::Result<()> {
                 &mut args_map,
             );
             formats.insert(fmt.name.clone(), fmt);
-        }else {
+        } else {
             // Instruction pattern
-            if let Some(pattern) = parse_pattern(line, &formats, &fields, &mut args_map) {
-                println!("{}[PATTERN] {:<20} (@{})", 
-                        "  ".repeat(indent_level), pattern.name, pattern.format);
-                
+            if let Some(pattern) = parse_pattern(line, &mut formats, &mut fields, &mut args_map) {
+                println!(
+                    "{}[PATTERN] {:<20} (@{})",
+                    "  ".repeat(indent_level),
+                    pattern.name,
+                    pattern.format
+                );
+
                 // Add pattern to current group
                 if let Some(current_group) = group_stack.last_mut() {
                     current_group.add_pattern(pattern);
@@ -107,6 +123,7 @@ pub fn genrate_decode_file() -> io::Result<()> {
             }
         }
     }
+    
 
     // Collapse remaining groups (in case of unclosed groups)
     while group_stack.len() > 1 {
@@ -116,7 +133,7 @@ pub fn genrate_decode_file() -> io::Result<()> {
             parent.add_subgroup(completed_group);
         }
     }
-    
+
     root_group = group_stack.pop().unwrap();
 
     // Create output file
@@ -150,22 +167,21 @@ pub fn genrate_decode_file() -> io::Result<()> {
         fmt.output(&mut file)?;
     }
 
-
-     // Write pattern group documentation
+    // Write pattern group documentation
     writeln!(file, "// ===== Pattern Group Structure =====")?;
     writeln!(file)?;
-    root_group.output_doc(&mut file)?;
-    writeln!(file)?;
 
+    root_group.output_instruction_variant(&mut file,&formats)?;
     // Write decoder function skeleton
     writeln!(file, "// ===== Decoder Function (skeleton) =====")?;
     writeln!(file)?;
     writeln!(file, "#[derive(Debug, Clone)]")?;
-    writeln!(file, "pub enum Instruction {{")?;
-    writeln!(file, "    // Add instruction variants here")?;
-    writeln!(file, "}}")?;
+
     writeln!(file)?;
-    writeln!(file, "pub fn decode_instruction(inst: u32) -> Option<Instruction> {{")?;
+    writeln!(
+        file,
+        "pub fn decode_instruction(inst: u32) -> Option<Instruction> {{"
+    )?;
     root_group.generate_decoder(&mut file, "inst")?;
     writeln!(file, "    None")?;
     writeln!(file, "}}")?;
@@ -175,14 +191,14 @@ pub fn genrate_decode_file() -> io::Result<()> {
     println!("  - Argument sets: {}", args_map.len());
     println!("  - Field definitions: {}", fields.len());
     println!("  - Formats: {}", formats.len());
-    
+
     // Count total patterns in all groups
     fn count_patterns(group: &PatternGroup) -> usize {
         group.patterns.len() + group.subgroups.iter().map(count_patterns).sum::<usize>()
     }
     let total_patterns = count_patterns(&root_group);
     println!("  - Patterns: {}", total_patterns);
-    
+
     // Count inferred argument sets
     let inferred_count = args_map
         .values()
@@ -226,12 +242,6 @@ impl Arguments {
         // Don't generate struct for extern arguments
         if self.is_extern {
             writeln!(writer, "// extern struct: {}", self.name)?;
-            return Ok(());
-        }
-
-        // Skip empty argument sets
-        if self.fields.is_empty() {
-            writeln!(writer, "// Warning: Empty argument set: {}", self.name)?;
             return Ok(());
         }
 
@@ -304,6 +314,22 @@ pub struct Format {
 
 impl Format {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
+
+        println!(" format name {}  fields {:?}",self.name,self.fields);
+        if self.fields.is_empty() {
+            writeln!(
+                writer,
+                "pub fn extract_{}(_: u32) -> arg_empty  {{
+            arg_empty{{}}
+            ",
+                self.name
+            )?;
+            writeln!(writer, "}}")?;
+            writeln!(writer)?;
+            println!("format name {} is empty field",self.name);
+
+            return Ok(());
+        }
         writeln!(
             writer,
             "pub fn extract_{}(inst: u32) -> arg_{} {{",
@@ -312,7 +338,11 @@ impl Format {
 
         writeln!(writer, "    arg_{} {{", self.base)?;
 
+        
+
         for (name, field) in &self.fields {
+
+            println!(" name {}   field {:?}",self.name,field);
             write!(writer, "        ")?;
             field.output(name, writer)?;
         }

@@ -39,7 +39,7 @@ pub enum GroupType {
 #[derive(Debug, Clone)]
 pub struct PatternGroup {
     pub group_type: GroupType,
-    pub patterns: Vec<Pattern>,
+    pub patterns: HashMap<String, Pattern>,
     pub subgroups: Vec<PatternGroup>,
     pub indent_level: usize,
 }
@@ -48,14 +48,14 @@ impl PatternGroup {
     pub fn new(group_type: GroupType, indent_level: usize) -> Self {
         Self {
             group_type,
-            patterns: Vec::new(),
+            patterns: HashMap::new(),
             subgroups: Vec::new(),
             indent_level,
         }
     }
 
     pub fn add_pattern(&mut self, pattern: Pattern) {
-        self.patterns.push(pattern);
+        self.patterns.insert(pattern.name.clone(), pattern);
     }
 
     pub fn add_subgroup(&mut self, group: PatternGroup) {
@@ -76,7 +76,7 @@ impl PatternGroup {
                 }
 
                 // Then check patterns in order
-                for pattern in &self.patterns {
+                for (_, pattern) in self.patterns.iter() {
                     writeln!(
                         writer,
                         "{}if ({} & 0x{:08x}) == 0x{:08x} {{",
@@ -109,7 +109,7 @@ impl PatternGroup {
                     let common_mask = self
                         .patterns
                         .iter()
-                        .map(|p| p.fixedmask)
+                        .map(|(_, p)| p.fixedmask)
                         .fold(u64::MAX, |acc, mask| acc & mask);
 
                     writeln!(
@@ -118,7 +118,7 @@ impl PatternGroup {
                         indent, var_name, common_mask
                     )?;
 
-                    for pattern in &self.patterns {
+                    for (_, pattern) in &self.patterns {
                         writeln!(
                             writer,
                             "{}    0x{:08x} => {{  // {}",
@@ -164,8 +164,8 @@ impl PatternGroup {
 
         writeln!(writer, "{}{} {{", indent, group_name)?;
 
-        for pattern in &self.patterns {
-            writeln!(writer, "{}  {}", indent, pattern.name)?;
+        for (name, _) in &self.patterns {
+            writeln!(writer, "{}  {}", indent, name)?;
         }
 
         for subgroup in &self.subgroups {
@@ -176,24 +176,57 @@ impl PatternGroup {
 
         Ok(())
     }
+
+    pub fn output_instruction_variant(
+        &self,
+        writer: &mut dyn Write,
+        formats: &HashMap<String, Format>,
+    ) -> io::Result<()> {
+        writeln!(writer, "pub enum Instruction {{")?;
+
+        for (name, pattern) in &self.patterns {
+            println!("name of the pattern {}", name);
+            if let Some(format) = formats.get(&pattern.format) {
+                writeln!(writer, "{} {{args : arg_{} }},", name, format.base)?;
+            }
+        }
+
+        for sub in &self.subgroups {
+            sub.sub_output_instruction_variant(writer, formats)?;
+        }
+        writeln!(writer, "}}")?;
+
+        Ok(())
+    }
+
+    fn sub_output_instruction_variant(
+        &self,
+        writer: &mut dyn Write,
+        formats: &HashMap<String, Format>,
+    ) -> io::Result<()> {
+        for (name, pattern) in &self.patterns {
+            println!("name of the pattern {}", name);
+            if let Some(format) = formats.get(&pattern.format) {
+                writeln!(writer, "{} {{args : arg_{} }},", name, format.base)?;
+            }
+        }
+         for sub in &self.subgroups {
+            sub.sub_output_instruction_variant(writer, formats)?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Parse a pattern line and extract its information
 pub fn parse_pattern(
     line: &str,
-    _formats: &HashMap<String, Format>,
-    fields: &HashMap<String, FieldType>,
+    formats: &mut HashMap<String, Format>,
+    fields: &mut HashMap<String, FieldType>,
     args_map: &mut HashMap<String, Arguments>,
 ) -> Option<Pattern> {
     let (name, rest) = split_first_token(line);
-    println!("name {}  rest {}", name, rest);
     let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
-    println!("bit tokens {:?} ", bit_tokens);
-    // Check if this pattern uses an existing format (starts with @)
-    let format_name = base.clone();
-
-    // Parse the pattern to extract fixed bits
-
     let mut current_pos: isize = 31;
     let mut pattern_fields: HashMap<String, FieldType> = HashMap::new();
     let mut fixedmask: u64 = 0;
@@ -242,20 +275,18 @@ pub fn parse_pattern(
 
         // Handle fixed bits
         for ch in token.chars() {
-            if ch == '@' ||(ch != '1'||ch != '1'){
+            if ch == '@' || (ch != '1' || ch != '1') {
                 break;
             }
             match ch {
                 '0' => {
                     let pos = current_pos as usize;
-                    println!("token {} ch {}", token, ch);
 
                     fixedmask |= 1u64 << pos;
                     current_pos -= 1;
                 }
                 '1' => {
                     let pos = current_pos as usize;
-                    println!("token {} ch {}", token, ch);
                     fixedmask |= 1u64 << pos;
                     fixedbits |= 1u64 << pos;
                     current_pos -= 1;
@@ -270,7 +301,6 @@ pub fn parse_pattern(
         }
     }
 
-    // Process assignments
     for (fname, valstr) in &assigns {
         if valstr.starts_with('%') {
             let ref_name = &valstr[1..];
@@ -293,22 +323,37 @@ pub fn parse_pattern(
     }
 
     // Infer argument set if it doesn't exist
-    if !args_map.contains_key(&format_name) && !pattern_fields.is_empty() {
-        println!("  Inferring argument set from pattern: {}", format_name);
+    if !args_map.contains_key(&base) && !pattern_fields.is_empty() {
+        println!("  Inferring argument set from pattern: {}", base);
         let inferred_args = Arguments::new(
-            format_name.clone(),
+            base.clone(),
             pattern_fields
                 .keys()
                 .map(|k| (k.clone(), "u32".to_string()))
                 .collect(),
             false,
         );
-        args_map.insert(format_name.clone(), inferred_args);
+        args_map.insert(base.clone(), inferred_args);
+    }
+
+    if pattern_fields.is_empty() {
+        let fmt = Format {
+            name: name.clone(),
+            base: base.clone(),
+            fields: pattern_fields.clone(),
+            fixedbits,
+            fixedmask,
+        };
+
+        formats.insert(name.clone(), fmt);
+    }
+    if let Some(format) = formats.get_mut(&base) {
+        format.fields.extend(pattern_fields);
     }
 
     Some(Pattern {
         name,
-        format: format_name,
+        format: base,
         fixedbits,
         fixedmask,
     })
