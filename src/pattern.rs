@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{self, Write},
 };
 
@@ -62,8 +62,24 @@ impl PatternGroup {
         self.subgroups.push(group);
     }
 
+    /// Collect all unique pattern names in this group and subgroups
+    pub fn collect_all_pattern_names(&self, names: &mut HashSet<String>) {
+        for name in self.patterns.keys() {
+            names.insert(name.clone());
+        }
+
+        for subgroup in &self.subgroups {
+            subgroup.collect_all_pattern_names(names);
+        }
+    }
+
     /// Generate decoder code for this group
-    pub fn generate_decoder(&self, writer: &mut dyn Write, var_name: &str) -> io::Result<()> {
+    pub fn generate_decoder(
+        &self,
+        writer: &mut dyn Write,
+        var_name: &str,
+        formats: &HashMap<String, Format>,
+    ) -> io::Result<()> {
         let indent = "    ".repeat(self.indent_level);
 
         match self.group_type {
@@ -72,7 +88,7 @@ impl PatternGroup {
 
                 // Process subgroups first
                 for subgroup in &self.subgroups {
-                    subgroup.generate_decoder(writer, var_name)?;
+                    subgroup.generate_decoder(writer, var_name, formats)?;
                 }
 
                 // Then check patterns in order
@@ -83,16 +99,33 @@ impl PatternGroup {
                         indent, var_name, pattern.fixedmask, pattern.fixedbits
                     )?;
                     writeln!(writer, "{}    // Matched: {}", indent, pattern.name)?;
-                    writeln!(
-                        writer,
-                        "{}    let args = extract_{}({});",
-                        indent, pattern.format, var_name
-                    )?;
-                    writeln!(
-                        writer,
-                        "{}    return Some(Instruction::{} {{ args }});",
-                        indent, pattern.name
-                    )?;
+                    println!(
+                        "result  of {} {}",
+                        self.pattern_has_args(pattern, formats),
+                        pattern.name
+                    );
+                    if self.pattern_has_args(pattern, formats) {
+                        println!("has args {}", pattern.name);
+                        writeln!(
+                            writer,
+                            "{}        let args = extract_{}({});",
+                            indent, pattern.format, var_name
+                        )?;
+
+                        writeln!(
+                            writer,
+                            "{}        return Some(Instruction::{} {{ args }});",
+                            indent, pattern.name
+                        )?;
+                    } else {
+                        println!("has  no args  in decode tre{}", pattern.name);
+
+                        writeln!(
+                            writer,
+                            "{}        return Some(Instruction::{});",
+                            indent, pattern.name
+                        )?;
+                    }
                     writeln!(writer, "{}}}", indent)?;
                 }
             }
@@ -105,37 +138,50 @@ impl PatternGroup {
                 )?;
 
                 if !self.patterns.is_empty() {
-                    // Find the common mask for all patterns
-                    let common_mask = self
-                        .patterns
-                        .iter()
-                        .map(|(_, p)| p.fixedmask)
-                        .fold(u64::MAX, |acc, mask| acc & mask);
+                    // Find the distinguishing mask - bits that are fixed in at least one pattern
+                    // and can help differentiate between patterns
+                    let distinguishing_mask = self.calculate_distinguishing_mask();
 
                     writeln!(
                         writer,
                         "{}match {} & 0x{:08x} {{",
-                        indent, var_name, common_mask
+                        indent, var_name, distinguishing_mask
                     )?;
 
                     for (_, pattern) in &self.patterns {
+                        let masked_bits = pattern.fixedbits & distinguishing_mask;
                         writeln!(
                             writer,
                             "{}    0x{:08x} => {{  // {}",
-                            indent,
-                            pattern.fixedbits & common_mask,
+                            indent, masked_bits, pattern.name
+                        )?;
+                        println!(
+                            "result  of {} {}",
+                            self.pattern_has_args(pattern, formats),
                             pattern.name
-                        )?;
-                        writeln!(
-                            writer,
-                            "{}        let args = extract_{}({});",
-                            indent, pattern.format, var_name
-                        )?;
-                        writeln!(
-                            writer,
-                            "{}        return Some(Instruction::{} {{ args }});",
-                            indent, pattern.name
-                        )?;
+                        );
+                        if self.pattern_has_args(pattern, formats) {
+                            println!("has args {}", pattern.name);
+                            writeln!(
+                                writer,
+                                "{}        let args = extract_{}({});",
+                                indent, pattern.format, var_name
+                            )?;
+
+                            writeln!(
+                                writer,
+                                "{}        return Some(Instruction::{} {{ args }});",
+                                indent, pattern.name
+                            )?;
+                        } else {
+                            println!("has  no args  in decode tre{}", pattern.name);
+
+                            writeln!(
+                                writer,
+                                "{}        return Some(Instruction::{});",
+                                indent, pattern.name
+                            )?;
+                        }
                         writeln!(writer, "{}    }}", indent)?;
                     }
 
@@ -145,12 +191,34 @@ impl PatternGroup {
 
                 // Process subgroups
                 for subgroup in &self.subgroups {
-                    subgroup.generate_decoder(writer, var_name)?;
+                    subgroup.generate_decoder(writer, var_name, formats)?;
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// Calculate the mask that distinguishes patterns in a no-overlap group
+    fn calculate_distinguishing_mask(&self) -> u64 {
+        if self.patterns.is_empty() {
+            return 0;
+        }
+
+        let patterns: Vec<&Pattern> = self.patterns.values().collect();
+
+        // Strategy 1: Use all fixed bits from all patterns
+        // This is the union of all fixedmasks
+        let full_mask: u64 = patterns
+            .iter()
+            .map(|p| p.fixedmask)
+            .fold(0u64, |acc, mask| acc | mask);
+
+        // Strategy 2: Find minimal distinguishing bits
+        // For now, use the full mask to ensure we can distinguish all patterns
+        // TODO: Could optimize by finding minimal set of bits needed
+
+        full_mask
     }
 
     /// Output documentation for this group
@@ -177,47 +245,74 @@ impl PatternGroup {
         Ok(())
     }
 
+    /// Output instruction enum with NO DUPLICATES
     pub fn output_instruction_variant(
         &self,
         writer: &mut dyn Write,
         formats: &HashMap<String, Format>,
     ) -> io::Result<()> {
+        // Collect all unique pattern names first
+        let mut all_names = HashSet::new();
+        self.collect_all_pattern_names(&mut all_names);
+
+        writeln!(writer, "#[derive(Debug, Clone)]")?;
         writeln!(writer, "pub enum Instruction {{")?;
 
-        for (name, pattern) in &self.patterns {
-            println!("name of the pattern {}", name);
-            if let Some(format) = formats.get(&pattern.format) {
-                writeln!(writer, "{} {{args : arg_{} }},", name, format.base)?;
+        // Sort names for consistent output
+        let mut sorted_names: Vec<String> = all_names.into_iter().collect();
+        sorted_names.sort();
+
+        for name in sorted_names {
+            // Find the pattern with this name (search in this group and subgroups)
+
+            if let Some(pattern) = self.find_pattern(&name) {
+                if self.pattern_has_args(&pattern, formats) {
+                    if let Some(format) = formats.get(&pattern.format) {
+                        writeln!(writer, "    {} {{ args: arg_{} }},", name, format.base)?;
+                    } else {
+                        // Format not found, use pattern format name directly
+                        writeln!(writer, "    {} {{ args: arg_{} }},", name, pattern.format)?;
+                    }
+                } else {
+                    writeln!(writer, "    {} ,", name)?;
+                }
             }
         }
 
-        for sub in &self.subgroups {
-            sub.sub_output_instruction_variant(writer, formats)?;
-        }
         writeln!(writer, "}}")?;
 
         Ok(())
     }
 
-    fn sub_output_instruction_variant(
-        &self,
-        writer: &mut dyn Write,
-        formats: &HashMap<String, Format>,
-    ) -> io::Result<()> {
-        for (name, pattern) in &self.patterns {
-            println!("name of the pattern {}", name);
-            if let Some(format) = formats.get(&pattern.format) {
-                writeln!(writer, "{} {{args : arg_{} }},", name, format.base)?;
+    /// Find a pattern by name in this group or subgroups
+    fn find_pattern(&self, name: &str) -> Option<Pattern> {
+        // Check this group first
+        if let Some(pattern) = self.patterns.get(name) {
+            return Some(pattern.clone());
+        }
+
+        // Check subgroups
+        for subgroup in &self.subgroups {
+            if let Some(pattern) = subgroup.find_pattern(name) {
+                return Some(pattern);
             }
         }
-         for sub in &self.subgroups {
-            sub.sub_output_instruction_variant(writer, formats)?;
+
+        None
+    }
+
+    fn pattern_has_args(&self, pattern: &Pattern, formats: &HashMap<String, Format>) -> bool {
+        if let Some(format) = formats.get(&pattern.format) {
+            if format.fields.is_empty() {
+                // println!("has no field  {}", pattern.name);
+                return false; // ← Check if empty
+            }
         }
 
-        Ok(())
+        // println!("not find arg {}", pattern.name);
+        true // Safe default: assume has args
     }
 }
-
 /// Parse a pattern line and extract its information
 pub fn parse_pattern(
     line: &str,
@@ -227,6 +322,8 @@ pub fn parse_pattern(
 ) -> Option<Pattern> {
     let (name, rest) = split_first_token(line);
     let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
+
+    println!("bit token  {}  {:?}",name,bit_tokens);
     let mut current_pos: isize = 31;
     let mut pattern_fields: HashMap<String, FieldType> = HashMap::new();
     let mut fixedmask: u64 = 0;
@@ -302,10 +399,12 @@ pub fn parse_pattern(
     }
 
     for (fname, valstr) in &assigns {
-        if valstr.starts_with('%') {
-            let ref_name = &valstr[1..];
-            if let Some(field) = fields.get(ref_name) {
-                pattern_fields.insert(fname.clone(), field.clone());
+        if fname.starts_with('%') {
+            println!("ass parm {}",fname);
+            
+            if let Some(field) = fields.get(valstr) {
+                println!("field type {:?}",field);
+                pattern_fields.insert(valstr.clone(), field.clone());
             }
         } else if valstr.starts_with('!') {
             let func_name = &valstr[1..];
@@ -324,7 +423,6 @@ pub fn parse_pattern(
 
     // Infer argument set if it doesn't exist
     if !args_map.contains_key(&base) && !pattern_fields.is_empty() {
-        println!("  Inferring argument set from pattern: {}", base);
         let inferred_args = Arguments::new(
             base.clone(),
             pattern_fields
@@ -336,17 +434,29 @@ pub fn parse_pattern(
         args_map.insert(base.clone(), inferred_args);
     }
 
-    if pattern_fields.is_empty() {
-        let fmt = Format {
+    println!(
+        "patt name {}  base {} fields {:?}",
+        name, base, pattern_fields
+    );
+    let fmt = if pattern_fields.is_empty() {
+        Format {
             name: name.clone(),
             base: base.clone(),
             fields: pattern_fields.clone(),
             fixedbits,
             fixedmask,
-        };
+        }
+    } else {
+        Format {
+            name: base.clone(),
+            base: base.clone(),
+            fields: pattern_fields.clone(),
+            fixedbits,
+            fixedmask,
+        }
+    };
 
-        formats.insert(name.clone(), fmt);
-    }
+    formats.entry(fmt.name.clone()).or_insert(fmt);
     if let Some(format) = formats.get_mut(&base) {
         format.fields.extend(pattern_fields);
     }

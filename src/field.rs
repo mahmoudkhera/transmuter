@@ -36,8 +36,6 @@ impl Field {
         Ok(())
     }
 
-    
-
     pub fn get_pos_len(&self) -> (usize, usize) {
         (self.pos, self.len)
     }
@@ -367,14 +365,14 @@ pub fn parse_format_tail(name: &str, s: &str) -> (Vec<String>, String, Vec<(Stri
     // Find token that starts with '&'
     let mut amp_index = None;
     for (i, p) in parts.iter().enumerate() {
-        if p.starts_with('&')||p.starts_with('@') {
+        if p.starts_with('&') || p.starts_with('@') {
             amp_index = Some(i);
             break;
         }
     }
 
     if let Some(ai) = amp_index {
-        let bit_tokens = parts[0..ai].to_vec();
+        let  bit_tokens = parts[0..ai].to_vec();
         let base = parts[ai][1..].to_string();
 
         let mut ass = Vec::new();
@@ -385,9 +383,12 @@ pub fn parse_format_tail(name: &str, s: &str) -> (Vec<String>, String, Vec<(Stri
 
                 ass.push((name, val));
             }
+            if tok.starts_with('%'){
+                let mut chars=tok.chars();
+                let ass_parm=chars.next().unwrap().to_string();
+                ass.push((ass_parm,chars.collect()));
+            }
         }
-
-    
 
         (bit_tokens, base, ass)
     } else {
@@ -467,7 +468,6 @@ pub fn parse_format(
 
         // Handle mixed tokens like "0001" or "10.."
         for ch in token.chars() {
-
             if ch == '@' || (ch != '1' || ch != '1') {
                 break;
             }

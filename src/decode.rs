@@ -1,17 +1,12 @@
+use crate::{
+    field::{Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field},
+    pattern::{GroupType, PatternGroup, parse_pattern},
+};
 use std::{
     collections::HashMap,
     fs::{self, File},
     io::{self, Write},
 };
-use crate::{
-    field::{Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field},
-    pattern::{GroupType, PatternGroup, parse_pattern},
-};
-
-
-
-
-
 
 pub fn genrate_decode_file() -> io::Result<()> {
     // read the snippet from a file or paste here
@@ -123,7 +118,6 @@ pub fn genrate_decode_file() -> io::Result<()> {
             }
         }
     }
-    
 
     // Collapse remaining groups (in case of unclosed groups)
     while group_stack.len() > 1 {
@@ -171,7 +165,7 @@ pub fn genrate_decode_file() -> io::Result<()> {
     writeln!(file, "// ===== Pattern Group Structure =====")?;
     writeln!(file)?;
 
-    root_group.output_instruction_variant(&mut file,&formats)?;
+    root_group.output_instruction_variant(&mut file, &formats)?;
     // Write decoder function skeleton
     writeln!(file, "// ===== Decoder Function (skeleton) =====")?;
     writeln!(file)?;
@@ -182,7 +176,7 @@ pub fn genrate_decode_file() -> io::Result<()> {
         file,
         "pub fn decode_instruction(inst: u32) -> Option<Instruction> {{"
     )?;
-    root_group.generate_decoder(&mut file, "inst")?;
+    root_group.generate_decoder(&mut file, "inst", &formats)?;
     writeln!(file, "    None")?;
     writeln!(file, "}}")?;
 
@@ -314,42 +308,26 @@ pub struct Format {
 
 impl Format {
     pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
-
-        println!(" format name {}  fields {:?}",self.name,self.fields);
-        if self.fields.is_empty() {
+        println!("format name must be {}", self.name);
+        if !self.fields.is_empty() {
             writeln!(
                 writer,
-                "pub fn extract_{}(_: u32) -> arg_empty  {{
-            arg_empty{{}}
-            ",
-                self.name
+                "pub fn extract_{}(inst: u32) -> arg_{} {{",
+                self.name, self.base
             )?;
+
+            writeln!(writer, "    arg_{} {{", self.base)?;
+
+            for (name, field) in &self.fields {
+                println!(" name {}   field {:?}", self.name, field);
+                write!(writer, "        ")?;
+                field.output(name, writer)?;
+            }
+
+            writeln!(writer, "    }}")?;
             writeln!(writer, "}}")?;
             writeln!(writer)?;
-            println!("format name {} is empty field",self.name);
-
-            return Ok(());
         }
-        writeln!(
-            writer,
-            "pub fn extract_{}(inst: u32) -> arg_{} {{",
-            self.name, self.base
-        )?;
-
-        writeln!(writer, "    arg_{} {{", self.base)?;
-
-        
-
-        for (name, field) in &self.fields {
-
-            println!(" name {}   field {:?}",self.name,field);
-            write!(writer, "        ")?;
-            field.output(name, writer)?;
-        }
-
-        writeln!(writer, "    }}")?;
-        writeln!(writer, "}}")?;
-        writeln!(writer)?;
 
         Ok(())
     }
