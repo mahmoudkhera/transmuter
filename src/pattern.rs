@@ -4,8 +4,10 @@ use std::{
 };
 
 use crate::{
-    decode::{Arguments, Format, split_first_token},
-    field::{FieldType, parse_format_tail},
+    decode::Arguments,
+    field::FieldType,
+    format::Format,
+    utils::{parse_format_tail, split_first_token},
 };
 
 /// Pattern: instruction pattern line
@@ -53,6 +55,27 @@ impl PatternGroup {
             indent_level,
         }
     }
+    pub fn generate_decoder(
+        &self,
+        writer: &mut dyn Write,
+        var_name: &str,
+        formats: &HashMap<String, Format>,
+    ) -> io::Result<()> {
+        // Write decoder function skeleton
+        writeln!(writer, "// ===== Decoder Function (skeleton) =====")?;
+        writeln!(writer)?;
+
+        writeln!(writer)?;
+        writeln!(
+            writer,
+            "pub fn decode_instruction(inst: u32) -> Option<Instruction> {{"
+        )?;
+        self.generate_decoder_helper(writer, var_name, &formats)?;
+        writeln!(writer, "    None")?;
+        writeln!(writer, "}}")?;
+
+        Ok(())
+    }
 
     pub fn add_pattern(&mut self, pattern: Pattern) {
         self.patterns.insert(pattern.name.clone(), pattern);
@@ -74,7 +97,7 @@ impl PatternGroup {
     }
 
     /// Generate decoder code for this group
-    pub fn generate_decoder(
+    pub fn generate_decoder_helper(
         &self,
         writer: &mut dyn Write,
         var_name: &str,
@@ -99,13 +122,8 @@ impl PatternGroup {
                         indent, var_name, pattern.fixedmask, pattern.fixedbits
                     )?;
                     writeln!(writer, "{}    // Matched: {}", indent, pattern.name)?;
-                    println!(
-                        "result  of {} {}",
-                        self.pattern_has_args(pattern, formats),
-                        pattern.name
-                    );
+
                     if self.pattern_has_args(pattern, formats) {
-                        println!("has args {}", pattern.name);
                         writeln!(
                             writer,
                             "{}        let args = extract_{}({});",
@@ -118,8 +136,6 @@ impl PatternGroup {
                             indent, pattern.name
                         )?;
                     } else {
-                        println!("has  no args  in decode tre{}", pattern.name);
-
                         writeln!(
                             writer,
                             "{}        return Some(Instruction::{});",
@@ -155,13 +171,8 @@ impl PatternGroup {
                             "{}    0x{:08x} => {{  // {}",
                             indent, masked_bits, pattern.name
                         )?;
-                        println!(
-                            "result  of {} {}",
-                            self.pattern_has_args(pattern, formats),
-                            pattern.name
-                        );
+
                         if self.pattern_has_args(pattern, formats) {
-                            println!("has args {}", pattern.name);
                             writeln!(
                                 writer,
                                 "{}        let args = extract_{}({});",
@@ -174,8 +185,6 @@ impl PatternGroup {
                                 indent, pattern.name
                             )?;
                         } else {
-                            println!("has  no args  in decode tre{}", pattern.name);
-
                             writeln!(
                                 writer,
                                 "{}        return Some(Instruction::{});",
@@ -304,12 +313,10 @@ impl PatternGroup {
     fn pattern_has_args(&self, pattern: &Pattern, formats: &HashMap<String, Format>) -> bool {
         if let Some(format) = formats.get(&pattern.format) {
             if format.fields.is_empty() {
-                // println!("has no field  {}", pattern.name);
                 return false; // ← Check if empty
             }
         }
 
-        // println!("not find arg {}", pattern.name);
         true // Safe default: assume has args
     }
 }
@@ -323,7 +330,6 @@ pub fn parse_pattern(
     let (name, rest) = split_first_token(line);
     let (bit_tokens, base, assigns) = parse_format_tail(&name, &rest);
 
-    println!("bit token  {}  {:?}",name,bit_tokens);
     let mut current_pos: isize = 31;
     let mut pattern_fields: HashMap<String, FieldType> = HashMap::new();
     let mut fixedmask: u64 = 0;
@@ -333,7 +339,6 @@ pub fn parse_pattern(
     for token in &bit_tokens {
         if token.chars().all(|c| c == '.' || c == '-' || c == '_') {
             current_pos -= token.len() as isize;
-            println!("current pos {}   len {}", current_pos, token.len());
 
             continue;
         }
@@ -400,10 +405,7 @@ pub fn parse_pattern(
 
     for (fname, valstr) in &assigns {
         if fname.starts_with('%') {
-            println!("ass parm {}",fname);
-            
             if let Some(field) = fields.get(valstr) {
-                println!("field type {:?}",field);
                 pattern_fields.insert(valstr.clone(), field.clone());
             }
         } else if valstr.starts_with('!') {
@@ -434,10 +436,6 @@ pub fn parse_pattern(
         args_map.insert(base.clone(), inferred_args);
     }
 
-    println!(
-        "patt name {}  base {} fields {:?}",
-        name, base, pattern_fields
-    );
     let fmt = if pattern_fields.is_empty() {
         Format {
             name: name.clone(),

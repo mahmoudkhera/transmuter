@@ -1,6 +1,8 @@
 use crate::{
-    field::{Field, FieldType, MultiField, parse_format, parse_format_tail, parse_multi_field},
+    field::{Field, FieldType, MultiField, parse_multi_field},
+    format::{Format, join_continuations, parse_format},
     pattern::{GroupType, PatternGroup, parse_pattern},
+    utils::{parse_format_tail, split_first_token},
 };
 use std::{
     collections::HashMap,
@@ -167,18 +169,8 @@ pub fn genrate_decode_file() -> io::Result<()> {
 
     root_group.output_instruction_variant(&mut file, &formats)?;
     // Write decoder function skeleton
-    writeln!(file, "// ===== Decoder Function (skeleton) =====")?;
-    writeln!(file)?;
-    writeln!(file, "#[derive(Debug, Clone)]")?;
 
-    writeln!(file)?;
-    writeln!(
-        file,
-        "pub fn decode_instruction(inst: u32) -> Option<Instruction> {{"
-    )?;
     root_group.generate_decoder(&mut file, "inst", &formats)?;
-    writeln!(file, "    None")?;
-    writeln!(file, "}}")?;
 
     println!("Successfully generated {}!", output_path);
     println!("\nStatistics:");
@@ -296,71 +288,6 @@ pub fn get_args(line: &str) -> Arguments {
     Arguments::default()
 }
 
-/// Format: @name line (bit template + &base and optional assignments)
-#[derive(Debug, Clone)]
-pub struct Format {
-    pub name: String,
-    pub base: String,
-    pub fields: HashMap<String, FieldType>,
-    pub fixedbits: u64,
-    pub fixedmask: u64,
-}
-
-impl Format {
-    pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
-        println!("format name must be {}", self.name);
-        if !self.fields.is_empty() {
-            writeln!(
-                writer,
-                "pub fn extract_{}(inst: u32) -> arg_{} {{",
-                self.name, self.base
-            )?;
-
-            writeln!(writer, "    arg_{} {{", self.base)?;
-
-            for (name, field) in &self.fields {
-                println!(" name {}   field {:?}", self.name, field);
-                write!(writer, "        ")?;
-                field.output(name, writer)?;
-            }
-
-            writeln!(writer, "    }}")?;
-            writeln!(writer, "}}")?;
-            writeln!(writer)?;
-        }
-
-        Ok(())
-    }
-}
-
-//helper functions
-
-/// Put the line after the '/' and add it  to the previous line
-pub fn join_continuations(s: &str) -> String {
-    let mut output = String::new();
-    let mut pending = String::new();
-    for line in s.lines() {
-        let trimmed_line = line.trim_end();
-
-        if trimmed_line.ends_with('\\') {
-            pending.push_str(trimmed_line.trim_end_matches('\\'));
-            pending.push(' ');
-        } else {
-            pending.push_str(trimmed_line);
-            output.push_str(&pending);
-            output.push('\n');
-            pending.clear();
-        }
-    }
-
-    if !pending.is_empty() {
-        output.push_str(&pending);
-        output.push('\n');
-    }
-
-    output
-}
-
 /// Write the file header with metadata and compiler directives
 fn write_header(writer: &mut dyn Write) -> io::Result<()> {
     writeln!(writer, "// Auto-generated from a32.decode")?;
@@ -370,14 +297,4 @@ fn write_header(writer: &mut dyn Write) -> io::Result<()> {
     writeln!(writer, "#![allow(clippy::all)]")?;
     writeln!(writer)?;
     Ok(())
-}
-
-/// Split first token and the rest of the line
-pub fn split_first_token(s: &str) -> (String, String) {
-    let mut it = s.split_whitespace();
-    let name = it.next().unwrap_or("").to_string();
-
-    let rest = it.collect::<Vec<_>>().join(" ");
-
-    (name, rest)
 }

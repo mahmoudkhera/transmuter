@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    io::{self, Write},
-};
+use std::io::{self, Write};
 
 #[derive(Debug, Clone)]
 pub struct Field {
@@ -346,61 +343,8 @@ impl FieldType {
     }
 }
 
-/// Split first token from string
-pub fn split_first_token(s: &str) -> (String, String) {
-    let mut it = s.split_whitespace();
-    let name = it.next().unwrap_or("").to_string();
-    let rest = it.collect::<Vec<_>>().join(" ");
-    (name, rest)
-}
-
-/// Parse format tail: bit tokens (left) and &base and asments (right)
-/// Example rest: "---- ... s:1 rn:4 ... &s_rrr_shi rn=0"
-pub fn parse_format_tail(name: &str, s: &str) -> (Vec<String>, String, Vec<(String, String)>) {
-    let parts = s
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-
-    // Find token that starts with '&'
-    let mut amp_index = None;
-    for (i, p) in parts.iter().enumerate() {
-        if p.starts_with('&') || p.starts_with('@') {
-            amp_index = Some(i);
-            break;
-        }
-    }
-
-    if let Some(ai) = amp_index {
-        let  bit_tokens = parts[0..ai].to_vec();
-        let base = parts[ai][1..].to_string();
-
-        let mut ass = Vec::new();
-        for tok in parts.iter().skip(ai + 1) {
-            if let Some(eq) = tok.find('=') {
-                let name = tok[..eq].to_string();
-                let val = tok[eq + 1..].to_string();
-
-                ass.push((name, val));
-            }
-            if tok.starts_with('%'){
-                let mut chars=tok.chars();
-                let ass_parm=chars.next().unwrap().to_string();
-                ass.push((ass_parm,chars.collect()));
-            }
-        }
-
-        (bit_tokens, base, ass)
-    } else {
-        // No & found - format has no explicit base
-        // Use format name itself as base (inferred argument set)
-        let base = name.to_string();
-        (parts, base, Vec::new())
-    }
-}
-
 /// Parse a single field token and return FieldType
-fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldType, isize)> {
+pub fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldType, isize)> {
     // Handle field definitions like "rd:4" or "imm:s8" or "name:s4"
     if token.contains(':') && !token.starts_with('%') {
         let parts: Vec<&str> = token.split(':').collect();
@@ -435,129 +379,6 @@ fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldTy
     }
 
     None
-}
-
-/// Parse format: compute fixedmask/fixedbits from tokens and collect fields
-pub fn parse_format(
-    name: String,
-    bit_tokens: &[String],
-    base: &str,
-    ass: Vec<(String, String)>,
-    total_fields: &mut HashMap<String, FieldType>,
-    args_map: &mut HashMap<String, crate::decode::Arguments>,
-) -> crate::decode::Format {
-    let mut current_pos: isize = 31;
-    let mut fields: HashMap<String, FieldType> = HashMap::new();
-    let mut fixedmask: u64 = 0;
-    let mut fixedbits: u64 = 0;
-
-    // Parse bit tokens to extract fields and fixed bits
-    for token in bit_tokens {
-        // Handle pure don't-care patterns: "....", "----", "________"
-        if token.chars().all(|c| c == '.' || c == '-' || c == '_') {
-            current_pos -= token.len() as isize;
-            continue;
-        }
-
-        // Handle field definitions: "rd:4", "imm:s8", etc.
-        if let Some((field_name, field_type, new_pos)) = parse_field_token(token, current_pos) {
-            fields.insert(field_name, field_type);
-            current_pos = new_pos;
-            continue;
-        }
-
-        // Handle mixed tokens like "0001" or "10.."
-        for ch in token.chars() {
-            if ch == '@' || (ch != '1' || ch != '1') {
-                break;
-            }
-            match ch {
-                '0' => {
-                    let pos = current_pos as usize;
-                    fixedmask |= 1u64 << pos;
-                    // fixedbits already 0 for this bit
-                    current_pos -= 1;
-                }
-                '1' => {
-                    let pos = current_pos as usize;
-                    fixedmask |= 1u64 << pos;
-                    fixedbits |= 1u64 << pos;
-                    current_pos -= 1;
-                }
-                '.' | '-' | '_' => {
-                    current_pos -= 1;
-                }
-                _ => {
-                    // Unknown character, skip
-                    current_pos -= 1;
-                }
-            }
-        }
-    }
-
-    // Process assignments: "rn=0", "imm=%field", "val=!function", etc.
-    for (fname, valstr) in &ass {
-        if valstr.starts_with('%') {
-            // Field reference: "field=%other_field"
-            let ref_name = &valstr[1..];
-
-            if let Some(field) = total_fields.get(ref_name) {
-                fields.insert(fname.clone(), field.clone());
-            } else {
-                println!("Warning: Referenced field '{}' not found", ref_name);
-            }
-        } else if valstr.starts_with('!') {
-            // Function reference: "field=!function_name"
-            let func_name = &valstr[1..];
-            let param_field = ParameterField {
-                function: func_name.to_string(),
-            };
-            fields.insert(fname.clone(), FieldType::Parameter(param_field));
-        } else {
-            // Constant assignment: "field=0", "field=-5", etc.
-            if let Ok(val) = valstr.parse::<i64>() {
-                let const_field = ConstField {
-                    value: val,
-                    mask: 0,
-                };
-                fields.insert(fname.clone(), FieldType::Const(const_field));
-
-                // If the field was previously defined, update fixed bits
-                // This handles cases like "rd:4" in bit pattern with "rd=0" in ass
-                if let Some(field) = fields.get(fname) {
-                    if let FieldType::Simple(f) = field {
-                        fixedmask |= f.mask;
-                        let v = ((val as u64) & ((1u64 << f.len) - 1)) << f.pos;
-                        fixedbits |= v;
-                    }
-                }
-            }
-        }
-    }
-
-    // Update inferred argument set with actual fields from this format
-    if let Some(arg_set) = args_map.get_mut(base) {
-        if arg_set.fields.is_empty() && !arg_set.is_extern {
-            // This is an inferred argument set - populate it with fields
-            arg_set.fields = fields
-                .keys()
-                .map(|k| (k.clone(), "u32".to_string()))
-                .collect();
-            println!(
-                "  Populated inferred argument set '{}' with {} fields",
-                base,
-                arg_set.fields.len()
-            );
-        }
-    }
-
-    crate::decode::Format {
-        name,
-        base: base.to_string(),
-        fields,
-        fixedbits,
-        fixedmask,
-    }
 }
 
 // Parse a multi-field definition (for compound fields)
