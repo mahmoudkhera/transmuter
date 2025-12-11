@@ -3,5 +3,12 @@
 version = 4
 
 [[package]]
-name = "transmuter"
+name = "core"
+version = "0.1.0"
+dependencies = [
+ "decoded_tree",
+]
+
+[[package]]
+name = "decoded_tree"
 version = "0.1.0"

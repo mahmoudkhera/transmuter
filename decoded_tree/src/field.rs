@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 #[derive(Debug, Clone)]
-pub struct Field {
+pub  struct Field {
     pub name: String,
     pub pos: usize,
     pub len: usize,
@@ -33,9 +33,7 @@ impl Field {
         Ok(())
     }
 
-    pub fn get_pos_len(&self) -> (usize, usize) {
-        (self.pos, self.len)
-    }
+ 
 }
 
 #[derive(Debug, Clone)]
@@ -143,10 +141,6 @@ impl MultiField {
             .map(|field| (field.pos, field.len, field.is_signed))
             .collect()
     }
-
-    pub fn get_name(&self) -> String {
-        self.subs[0].name.clone()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -161,7 +155,7 @@ pub struct ParameterField {
 }
 
 #[derive(Debug, Clone)]
-pub enum FieldType {
+pub (crate) enum FieldType {
     Simple(Field),
     Multi(MultiField),
     Const(ConstField),
@@ -344,7 +338,7 @@ impl FieldType {
 }
 
 /// Parse a single field token and return FieldType
-pub fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldType, isize)> {
+pub (crate) fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, FieldType, isize)> {
     // Handle field definitions like "rd:4" or "imm:s8" or "name:s4"
     if token.contains(':') && !token.starts_with('%') {
         let parts: Vec<&str> = token.split(':').collect();
@@ -388,7 +382,7 @@ pub fn parse_field_token(token: &str, current_pos: isize) -> Option<(String, Fie
 /// - "%disp12  0:s1 1:1 2:10 !function=process"  (multiple fields + function)
 /// - "%some_param !function=get_value"           (parameter with no fields)
 
-pub fn parse_multi_field(s: &str) -> (String, FieldType) {
+pub (crate) fn parse_multi_field(s: &str) -> (String, FieldType) {
     let mut parts = s.split_whitespace();
     let name = parts.next().unwrap_or("").to_string();
     let name = name[1..].to_string();

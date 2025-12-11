@@ -12,23 +12,14 @@ use crate::{
 
 /// Pattern: instruction pattern line
 #[derive(Debug, Clone)]
-pub struct Pattern {
+pub (crate)  struct Pattern {
     pub name: String,
     pub format: String,
     pub fixedbits: u64,
     pub fixedmask: u64,
 }
 
-impl Pattern {
-    pub fn output(&self, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(
-            writer,
-            "// Pattern: {} (format: {}, mask: 0x{:08x}, bits: 0x{:08x})",
-            self.name, self.format, self.fixedmask, self.fixedbits
-        )?;
-        Ok(())
-    }
-}
+
 
 /// Group type for pattern groups
 #[derive(Debug, Clone, PartialEq)]
@@ -39,7 +30,7 @@ pub enum GroupType {
 
 /// Pattern group for hierarchical pattern organization
 #[derive(Debug, Clone)]
-pub struct PatternGroup {
+pub(crate) struct PatternGroup {
     pub group_type: GroupType,
     pub patterns: HashMap<String, Pattern>,
     pub subgroups: Vec<PatternGroup>,
@@ -66,6 +57,9 @@ impl PatternGroup {
         writeln!(writer)?;
 
         writeln!(writer)?;
+
+       
+
         writeln!(
             writer,
             "pub fn decode_instruction(inst: u32) -> Option<Instruction> {{"
@@ -111,7 +105,7 @@ impl PatternGroup {
 
                 // Process subgroups first
                 for subgroup in &self.subgroups {
-                    subgroup.generate_decoder(writer, var_name, formats)?;
+                    subgroup.generate_decoder_helper(writer, var_name, formats)?;
                 }
 
                 // Then check patterns in order
@@ -209,7 +203,7 @@ impl PatternGroup {
     }
 
     /// Calculate the mask that distinguishes patterns in a no-overlap group
-    fn calculate_distinguishing_mask(&self) -> u64 {
+    pub fn calculate_distinguishing_mask(&self) -> u64 {
         if self.patterns.is_empty() {
             return 0;
         }
@@ -230,29 +224,7 @@ impl PatternGroup {
         full_mask
     }
 
-    /// Output documentation for this group
-    pub fn output_doc(&self, writer: &mut dyn Write) -> io::Result<()> {
-        let indent = "// ".to_string() + &"  ".repeat(self.indent_level);
-
-        let group_name = match self.group_type {
-            GroupType::Overlap => "Overlap Group",
-            GroupType::NoOverlap => "No-Overlap Group",
-        };
-
-        writeln!(writer, "{}{} {{", indent, group_name)?;
-
-        for (name, _) in &self.patterns {
-            writeln!(writer, "{}  {}", indent, name)?;
-        }
-
-        for subgroup in &self.subgroups {
-            subgroup.output_doc(writer)?;
-        }
-
-        writeln!(writer, "{}}}", indent)?;
-
-        Ok(())
-    }
+   
 
     /// Output instruction enum with NO DUPLICATES
     pub fn output_instruction_variant(
@@ -294,7 +266,7 @@ impl PatternGroup {
     }
 
     /// Find a pattern by name in this group or subgroups
-    fn find_pattern(&self, name: &str) -> Option<Pattern> {
+   pub  fn find_pattern(&self, name: &str) -> Option<Pattern> {
         // Check this group first
         if let Some(pattern) = self.patterns.get(name) {
             return Some(pattern.clone());
@@ -321,7 +293,7 @@ impl PatternGroup {
     }
 }
 /// Parse a pattern line and extract its information
-pub fn parse_pattern(
+pub (crate) fn parse_pattern(
     line: &str,
     formats: &mut HashMap<String, Format>,
     fields: &mut HashMap<String, FieldType>,
@@ -377,11 +349,12 @@ pub fn parse_pattern(
 
         // Handle fixed bits
         for ch in token.chars() {
-            if ch == '@' || (ch != '1' || ch != '1') {
+            if ch == '@' {
                 break;
             }
             match ch {
                 '0' => {
+
                     let pos = current_pos as usize;
 
                     fixedmask |= 1u64 << pos;

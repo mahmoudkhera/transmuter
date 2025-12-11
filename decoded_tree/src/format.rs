@@ -8,9 +8,9 @@ use crate::field::{ConstField, FieldType, ParameterField, parse_field_token};
 /// Format: @name line (bit template + &base and optional assignments)
 #[derive(Debug, Clone)]
 pub struct Format {
-    pub name: String,
-    pub base: String,
-    pub fields: HashMap<String, FieldType>,
+    pub(crate) name: String,
+    pub(crate) base: String,
+    pub(crate) fields: HashMap<String, FieldType>,
     pub fixedbits: u64,
     pub fixedmask: u64,
 }
@@ -69,7 +69,7 @@ pub fn join_continuations(s: &str) -> String {
 }
 
 /// Parse format: compute fixedmask/fixedbits from tokens and collect fields
-pub fn parse_format(
+pub(crate) fn parse_format(
     name: String,
     bit_tokens: &[String],
     base: &str,
