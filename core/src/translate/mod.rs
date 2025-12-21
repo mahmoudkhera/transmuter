@@ -1,8 +1,5 @@
 mod translate;
 pub use self::translate::*;
 
-pub mod arg_translate;
-
-
-
-
+pub mod emitargs;
+pub mod armtranslator;

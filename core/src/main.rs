@@ -1,37 +1,36 @@
 use core::{
-    arm32arch::{Instruction, decode_instruction},
-    armmeme::{MemoryInterface, SimpleMemory},
+    armdecoder::DecodeContext, armmeme::SimpleMemory, translate::armtranslator::ArmTranslator,
 };
 
 fn main() {
     let program = [
-        0x02, 0x00, 0x81, 0xE0, // ADD R0, R1, R2
-        0x02, 0x00, 0x50, 0xE1, // CMP R0, R2
-        0x02, 0x30, 0x40, 0xC0, // SUBGT R3, R0, R2
+        0x00, 0x00, 0x81, 0xE0, // ADD R0, R1, R2
     ];
 
-    let mut memory = SimpleMemory::new(20);
+    let mut memory = SimpleMemory::new(4);
 
     memory.load_program(0, &program);
 
-    let raw_insts = get_insts(&mut memory);
+    let mut dectx = DecodeContext::new(0);
 
-    println!(" inst  {:?}", raw_insts);
-}
+    let mut arm_insts = Vec::new();
 
-fn get_insts(meme: &mut SimpleMemory) -> Vec<Instruction> {
-    let mut inst = Vec::new();
-
-    let mut addr = 0;
-
-    for _ in 0..3 {
-        let mem_read = meme.read_u32(addr).unwrap();
-        println!(" inst {:0b}", mem_read);
-        let decode_inst = decode_instruction(mem_read).unwrap();
-        addr += 4;
-
-        inst.push(decode_inst);
+    while let Some(arm_inst) = dectx.get_arm_inst(&memory) {
+        arm_insts.push(arm_inst);
     }
 
-    inst
+    println!("arm inst len {}",arm_insts.len());
+
+    let mut arm_translator = ArmTranslator::new(arm_insts);
+
+    arm_translator.translate_instructions().unwrap();
+
+    let ir_program = arm_translator.finalize();
+
+    println!("ir entry {}", ir_program.entry);
+
+    for block in ir_program.blocks.iter(){
+        println!("ir blocks {:?} ", block);
+    }
+    
 }

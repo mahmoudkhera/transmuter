@@ -40,11 +40,14 @@ impl DecodeContext {
     }
     fn next_pc(&mut self) -> u32 {
         let pc = self.pc;
-        self.pc += 1;
+        println!("pc {}",pc);
+        self.pc += 4;
         pc
     }
 
-    pub fn get_cond_inst(&mut self, meme: &mut SimpleMemory) -> Option<ArmInstruction> {
+    pub fn get_arm_inst(&mut self, meme: & SimpleMemory) -> Option<ArmInstruction> {
+
+
         match meme.read_u32(self.next_pc()) {
             Ok(meme) => {
                 let cond = self.get_condition(meme);
@@ -54,7 +57,7 @@ impl DecodeContext {
                     cond: cond,
                     inst: decode_inst,
                 })
-            }
+            },
 
             _ => None,
         }

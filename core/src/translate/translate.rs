@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{arm32arch::arg_s_rrr_shi, armprocessor::Condition};
+use crate::{ armprocessor::Condition};
 
 #[derive(Debug, Clone, Copy)]
 pub enum IROp {
@@ -175,17 +175,21 @@ impl IRBuilder {
         self.emit(IROp::And, vec![a, b]).unwrap()
     }
 
-    pub fn emit_lsr(&mut self, reg:u32,shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Lsr(shty, shim), vec![reg,shty, shim]).unwrap()
+    pub fn emit_lsr(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
+        self.emit(IROp::Lsr(shty, shim), vec![reg, shty, shim])
+            .unwrap()
     }
-    pub fn emit_lsl(&mut self, reg:u32,shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Lsl(shty, shim), vec![reg,shty, shim]).unwrap()
+    pub fn emit_lsl(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
+        self.emit(IROp::Lsl(shty, shim), vec![reg, shty, shim])
+            .unwrap()
     }
-    pub fn emit_asr(&mut self,reg:u32, shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Asr(shty, shim), vec![reg,shty, shim]).unwrap()
+    pub fn emit_asr(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
+        self.emit(IROp::Asr(shty, shim), vec![reg, shty, shim])
+            .unwrap()
     }
-    pub fn emit_ror(&mut self, reg:u32,shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Ror(shty, shim), vec![reg,shty, shim]).unwrap()
+    pub fn emit_ror(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
+        self.emit(IROp::Ror(shty, shim), vec![reg, shty, shim])
+            .unwrap()
     }
 
     pub fn emit_branch(&mut self, target: usize) {
