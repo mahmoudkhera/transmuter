@@ -11,7 +11,6 @@ use std::{
     path::Path,
 };
 
-
 /// Arguments: &name line
 #[derive(Debug, Clone)]
 pub struct Arguments {
@@ -116,7 +115,7 @@ fn write_header(writer: &mut dyn Write) -> io::Result<()> {
     Ok(())
 }
 
-pub fn generate_decode_file<P: AsRef<Path>>(output_path: P,input_path:P) -> io::Result<()> {
+pub fn generate_decode_file<P: AsRef<Path>>(output_path: P, input_path: P) -> io::Result<()> {
     // Step 1: Read and preprocess file
     let input = fs::read_to_string(input_path)?;
     let joined = join_continuations(&input);
@@ -282,8 +281,6 @@ fn handle_pattern_line(
     _indent: usize,
 ) {
     if let Some(pat) = parse_pattern(line, formats, fields, args) {
-      
-
         if let Some(group) = stack.last_mut() {
             group.add_pattern(pat);
         }

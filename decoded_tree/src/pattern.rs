@@ -12,14 +12,12 @@ use crate::{
 
 /// Pattern: instruction pattern line
 #[derive(Debug, Clone)]
-pub (crate)  struct Pattern {
+pub(crate) struct Pattern {
     pub name: String,
     pub format: String,
     pub fixedbits: u64,
     pub fixedmask: u64,
 }
-
-
 
 /// Group type for pattern groups
 #[derive(Debug, Clone, PartialEq)]
@@ -57,8 +55,6 @@ impl PatternGroup {
         writeln!(writer)?;
 
         writeln!(writer)?;
-
-       
 
         writeln!(
             writer,
@@ -224,8 +220,6 @@ impl PatternGroup {
         full_mask
     }
 
-   
-
     /// Output instruction enum with NO DUPLICATES
     pub fn output_instruction_variant(
         &self,
@@ -266,7 +260,7 @@ impl PatternGroup {
     }
 
     /// Find a pattern by name in this group or subgroups
-   pub  fn find_pattern(&self, name: &str) -> Option<Pattern> {
+    pub fn find_pattern(&self, name: &str) -> Option<Pattern> {
         // Check this group first
         if let Some(pattern) = self.patterns.get(name) {
             return Some(pattern.clone());
@@ -293,7 +287,7 @@ impl PatternGroup {
     }
 }
 /// Parse a pattern line and extract its information
-pub (crate) fn parse_pattern(
+pub(crate) fn parse_pattern(
     line: &str,
     formats: &mut HashMap<String, Format>,
     fields: &mut HashMap<String, FieldType>,
@@ -354,7 +348,6 @@ pub (crate) fn parse_pattern(
             }
             match ch {
                 '0' => {
-
                     let pos = current_pos as usize;
 
                     fixedmask |= 1u64 << pos;
