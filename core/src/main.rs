@@ -1,10 +1,11 @@
 use core::{
-    armdecoder::DecodeContext, armmeme::SimpleMemory, translate::armtranslator::ArmTranslator,
+    armdecoder::DecodeContext, armmeme::SimpleMemory, armprocessor::interpreter::IRInterpreter,
+    translate::armtranslator::ArmTranslator,
 };
 
 fn main() {
     let program = [
-        0x00, 0x00, 0x81, 0xE0, // ADD R0, R1, R2
+        0x17, 0x20, 0xA0, 0xE3, // Mov R2, #2
     ];
 
     let mut memory = SimpleMemory::new(4);
@@ -19,7 +20,7 @@ fn main() {
         arm_insts.push(arm_inst);
     }
 
-    println!("arm inst len {}",arm_insts.len());
+    println!("arm inst len {}", arm_insts.len());
 
     let mut arm_translator = ArmTranslator::new(arm_insts);
 
@@ -29,8 +30,10 @@ fn main() {
 
     println!("ir entry {}", ir_program.entry);
 
-    for block in ir_program.blocks.iter(){
-        println!("ir blocks {:?} ", block);
+    for (id, block) in ir_program.blocks.iter() {
+        println!("block {:?}", block);
     }
-    
+
+    let mut inter = IRInterpreter::new();
+    inter.excute(&ir_program).unwrap();
 }

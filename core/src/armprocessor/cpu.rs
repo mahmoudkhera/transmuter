@@ -1,5 +1,129 @@
 use core::fmt;
 
+/// ARM32 CPU core state (AArch32)
+///
+/// This struct models the architectural state of a single ARM CPU core,
+/// including general registers, banked registers, status registers,
+/// floating-point state, and exclusive monitors.
+
+#[derive(Debug, Clone)]
+pub struct CPUState {
+    //  General-purpose registers
+    /// R0–R15 (R15 = PC)
+    regs: [u32; 16],
+
+    //   Banked registers (privileged modes)
+    /// FIQ mode: R8–R14
+    pub regs_fiq: [u32; 7],
+
+    /// SVC, ABT, UND, IRQ: R13–R14
+    pub regs_svc: [u32; 2],
+    pub regs_abt: [u32; 2],
+    pub regs_und: [u32; 2],
+    pub regs_irq: [u32; 2],
+
+    //  * Status registers
+    /// Current Program Status Register
+    pub cpsr: CPSR,
+
+    /// Saved Program Status Registers
+    pub spsr_fiq: u32,
+    pub spsr_svc: u32,
+    pub spsr_abt: u32,
+    pub spsr_und: u32,
+    pub spsr_irq: u32,
+
+    //  Floating-point / SIMD
+    /// VFP / NEON registers (D0–D31)
+    pub vfp_regs: Option<[u64; 32]>,
+
+    //  * Exclusive monitor (LDREX/STREX)
+    pub exclusive_addr: u32,
+    pub exclusive_val: u32,
+}
+
+impl CPUState {
+    /// Create a CPU in reset-like state
+    pub fn new() -> Self {
+        Self {
+            regs: [0; 16],
+
+            regs_fiq: [0; 7],
+            regs_svc: [0; 2],
+            regs_abt: [0; 2],
+            regs_und: [0; 2],
+            regs_irq: [0; 2],
+
+            // SVC mode, IRQ/FIQ disabled
+            cpsr: CPSR::new(0x0000_00D3),
+
+            spsr_fiq: 0,
+            spsr_svc: 0,
+            spsr_abt: 0,
+            spsr_und: 0,
+            spsr_irq: 0,
+
+            vfp_regs: Some([0; 32]),
+
+            exclusive_addr: u32::MAX,
+            exclusive_val: 0,
+        }
+    }
+
+    //  General register access
+
+    /// Read a general-purpose register (R0–R15)
+    pub fn read_reg(&self, reg: u8) -> u32 {
+        match reg {
+            0..=14 => self.regs[reg as usize],
+            15 => self.read_pc(),
+            _ => panic!("Invalid register {}", reg),
+        }
+    }
+
+    /// Write a general-purpose register (R0–R15)
+    pub fn write_reg(&mut self, reg: u8, value: u32) {
+        match reg {
+            0..=14 => self.regs[reg as usize] = value,
+            15 => self.write_pc(value),
+            _ => panic!("Invalid register {}", reg),
+        }
+    }
+
+    //  Special registers
+
+    /// Read Program Counter (ARM state: PC + 8)
+    pub fn read_pc(&self) -> u32 {
+        self.regs[15].wrapping_add(8)
+    }
+
+    /// Write Program Counter (branch)
+    pub fn write_pc(&mut self, value: u32) {
+        // Clear Thumb bit; CPSR.T controls instruction set
+        self.regs[15] = value & !1;
+    }
+
+    /// Read Stack Pointer (R13)
+    pub fn read_sp(&self) -> u32 {
+        self.regs[13]
+    }
+
+    /// Write Stack Pointer (R13)
+    pub fn write_sp(&mut self, value: u32) {
+        self.regs[13] = value;
+    }
+
+    /// Read Link Register (R14)
+    pub fn read_lr(&self) -> u32 {
+        self.regs[14]
+    }
+
+    /// Write Link Register (R14)
+    pub fn write_lr(&mut self, value: u32) {
+        self.regs[14] = value;
+    }
+}
+
 /// ARM processor operating modes.
 ///
 /// These values correspond to the CPSR mode bits `M[4:0]`.
@@ -176,6 +300,37 @@ impl CPSR {
             self.bits |= 1 << 28;
         }
     }
+    /// Checks if the condition is met based on the current state of the
+    /// N, Z, C, and V flags in the CPSR.
+    pub fn evaluat_cond(&mut self, cond: Condition) -> bool {
+        match cond {
+            // Unsigned Comparisons
+            Condition::EQ => self.z(),  // Z == 1
+            Condition::NE => !self.z(), // Z == 0
+            Condition::CS => self.c(),  // C == 1
+            Condition::CC => !self.c(), // C == 0
+
+            // Single Flag Checks
+            Condition::MI => self.n(),  // N == 1
+            Condition::PL => !self.n(), // N == 0
+            Condition::VS => self.v(),  // V == 1
+            Condition::VC => !self.v(), // V == 0
+
+            // Complex Unsigned Comparisons
+            Condition::HI => self.c() && !self.z(), // C == 1 AND Z == 0 (Higher)
+            Condition::LS => !self.c() || self.z(), // C == 0 OR Z == 1 (Lower or Same)
+
+            // Signed Comparisons
+            Condition::GE => self.n() == self.v(), // N == V (Greater than or Equal)
+            Condition::LT => self.n() != self.v(), // N != V (Less than)
+            Condition::GT => !self.z() && (self.n() == self.v()), // Z == 0 AND N == V (Greater than)
+            Condition::LE => self.z() || (self.n() != self.v()), // Z == 1 OR N != V (Less than or Equal)
+
+            // Unconditional/Reserved
+            Condition::AL => true,
+            Condition::NV => false, // Always fails
+        }
+    }
 }
 
 /// Condition codes (Cond Field) from the ARM instruction format.
@@ -306,129 +461,5 @@ impl Default for ARMFeatures {
             thumb2: true,
             v7: true,
         }
-    }
-}
-
-/// ARM32 CPU core state (AArch32)
-///
-/// This struct models the architectural state of a single ARM CPU core,
-/// including general registers, banked registers, status registers,
-/// floating-point state, and exclusive monitors.
-
-#[derive(Debug, Clone)]
-pub struct CPUState {
-    //  General-purpose registers
-    /// R0–R15 (R15 = PC)
-    regs: [u32; 16],
-
-    //   Banked registers (privileged modes)
-    /// FIQ mode: R8–R14
-    pub regs_fiq: [u32; 7],
-
-    /// SVC, ABT, UND, IRQ: R13–R14
-    pub regs_svc: [u32; 2],
-    pub regs_abt: [u32; 2],
-    pub regs_und: [u32; 2],
-    pub regs_irq: [u32; 2],
-
-    //  * Status registers
-    /// Current Program Status Register
-    pub cpsr: CPSR,
-
-    /// Saved Program Status Registers
-    pub spsr_fiq: u32,
-    pub spsr_svc: u32,
-    pub spsr_abt: u32,
-    pub spsr_und: u32,
-    pub spsr_irq: u32,
-
-    //  Floating-point / SIMD
-    /// VFP / NEON registers (D0–D31)
-    pub vfp_regs: Option<[u64; 32]>,
-
-    //  * Exclusive monitor (LDREX/STREX)
-    pub exclusive_addr: u32,
-    pub exclusive_val: u32,
-}
-
-impl CPUState {
-    /// Create a CPU in reset-like state
-    pub fn new() -> Self {
-        Self {
-            regs: [0; 16],
-
-            regs_fiq: [0; 7],
-            regs_svc: [0; 2],
-            regs_abt: [0; 2],
-            regs_und: [0; 2],
-            regs_irq: [0; 2],
-
-            // SVC mode, IRQ/FIQ disabled
-            cpsr: CPSR::new(0x0000_00D3),
-
-            spsr_fiq: 0,
-            spsr_svc: 0,
-            spsr_abt: 0,
-            spsr_und: 0,
-            spsr_irq: 0,
-
-            vfp_regs: Some([0; 32]),
-
-            exclusive_addr: u32::MAX,
-            exclusive_val: 0,
-        }
-    }
-
-    //  General register access
-
-    /// Read a general-purpose register (R0–R15)
-    pub fn read_reg(&self, reg: u8) -> u32 {
-        match reg {
-            0..=14 => self.regs[reg as usize],
-            15 => self.read_pc(),
-            _ => panic!("Invalid register {}", reg),
-        }
-    }
-
-    /// Write a general-purpose register (R0–R15)
-    pub fn write_reg(&mut self, reg: u8, value: u32) {
-        match reg {
-            0..=14 => self.regs[reg as usize] = value,
-            15 => self.write_pc(value),
-            _ => panic!("Invalid register {}", reg),
-        }
-    }
-
-    //  Special registers
-
-    /// Read Program Counter (ARM state: PC + 8)
-    pub fn read_pc(&self) -> u32 {
-        self.regs[15].wrapping_add(8)
-    }
-
-    /// Write Program Counter (branch)
-    pub fn write_pc(&mut self, value: u32) {
-        // Clear Thumb bit; CPSR.T controls instruction set
-        self.regs[15] = value & !1;
-    }
-
-    /// Read Stack Pointer (R13)
-    pub fn read_sp(&self) -> u32 {
-        self.regs[13]
-    }
-
-    /// Write Stack Pointer (R13)
-    pub fn write_sp(&mut self, value: u32) {
-        self.regs[13] = value;
-    }
-
-    /// Read Link Register (R14)
-    pub fn read_lr(&self) -> u32 {
-        self.regs[14]
-    }
-
-    /// Write Link Register (R14)
-    pub fn write_lr(&mut self, value: u32) {
-        self.regs[14] = value;
     }
 }

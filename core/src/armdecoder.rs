@@ -1,7 +1,7 @@
 use crate::{
     arm32arch::{Instruction, decode_instruction},
     armmeme::{MemoryInterface, SimpleMemory},
-    armprocessor::Condition,
+    armprocessor::cpu::Condition,
 };
 
 #[derive(Clone)]
@@ -40,14 +40,11 @@ impl DecodeContext {
     }
     fn next_pc(&mut self) -> u32 {
         let pc = self.pc;
-        println!("pc {}",pc);
         self.pc += 4;
         pc
     }
 
-    pub fn get_arm_inst(&mut self, meme: & SimpleMemory) -> Option<ArmInstruction> {
-
-
+    pub fn get_arm_inst(&mut self, meme: &SimpleMemory) -> Option<ArmInstruction> {
         match meme.read_u32(self.next_pc()) {
             Ok(meme) => {
                 let cond = self.get_condition(meme);
@@ -57,7 +54,7 @@ impl DecodeContext {
                     cond: cond,
                     inst: decode_inst,
                 })
-            },
+            }
 
             _ => None,
         }

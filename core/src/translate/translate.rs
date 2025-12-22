@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{ armprocessor::Condition};
+use crate::armprocessor::cpu::Condition;
 
 #[derive(Debug, Clone, Copy)]
 pub enum IROp {
@@ -111,6 +111,7 @@ impl IRBuilder {
 
     pub fn create_blcok(&mut self) -> usize {
         let id = self.next_block_id;
+        self.next_block_id += 1;
 
         self.blocks.insert(
             id,
