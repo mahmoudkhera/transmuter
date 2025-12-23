@@ -1,7 +1,7 @@
 use crate::{
     armdecoder::ArmInstruction,
     armprocessor::cpu::Condition,
-    translate::{IRBuilder, IRProgram, emitargs::translate_arg},
+    translate::{IRBuilder, IRProgram, emitinstruction::translate_arg},
 };
 
 // Translator

@@ -28,10 +28,10 @@ pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(
 
     match inst {
         Instruction::ADD_rrri { args } => {
-            emit_add_rrri(ir_builder, args);
+            emit_data_processing(ir_builder, args, IRBuilder::emit_add);
         }
         Instruction::MOV_rxi { args } => {
-            emit_mov_rxi(ir_builder, args);
+            emit_dp_immediate(ir_builder, args, IRBuilder::emit_mov);
         }
         _ => println!("Unkown instruction"),
     }
@@ -39,12 +39,16 @@ pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(
     Ok(())
 }
 
-fn emit_add_rrri(ir_builder: &mut IRBuilder, args: &arg_s_rrr_shi) {
-    let rm_val = ir_builder.emit_load_reg(args.rm as u8);
+//# Data-processing (register)
 
-    let res = rrri_shift(ir_builder, rm_val, args.shim, args.shty);
+type DpOperand = fn(&mut IRBuilder, u32, u32) -> u32;
+/// emit ir for instruction rd=rn (operation) (rm+shift +shfit type
+pub fn emit_data_processing(ir_builder: &mut IRBuilder, args: &arg_s_rrr_shi, op: DpOperand) {
+    let rm = ir_builder.emit_load_reg(args.rm as u8);
 
-    let result = ir_builder.emit_add(args.rn, res);
+    let res = rrri_shift(ir_builder, rm, args.shim, args.shty);
+
+    let result = op(ir_builder, args.rn, res);
     ir_builder.emit_store_reg(args.rd as u8, result);
 
     if args.s == 1 {
@@ -53,11 +57,15 @@ fn emit_add_rrri(ir_builder: &mut IRBuilder, args: &arg_s_rrr_shi) {
     }
 }
 
-/// rd=ROR(imm, rot × 2)
-pub fn emit_mov_rxi(ir_builder: &mut IRBuilder, args: &arg_s_rri_rot) {
+// # Data-processing (immediate)
+
+type DpImm = fn(&mut IRBuilder, u32, u32) -> u32;
+
+pub fn emit_dp_immediate(ir_builder: &mut IRBuilder, args: &arg_s_rri_rot, op: DpImm) {
     let imm32 = ror32(args.imm, args.rot * 2);
 
     let result = ir_builder.emit_const(imm32);
+    let result = op(ir_builder, args.rn, result);
     ir_builder.emit_store_reg(args.rd as u8, result);
 
     if args.s == 1 {

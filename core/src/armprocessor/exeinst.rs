@@ -27,6 +27,16 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
             let result = a.wrapping_add(b);
             Ok(result)
         }
+        IROp::Mov => {
+            let val = interpreter.get_vreg(inst.inputs[1])?;
+            interpreter.cpu.write_reg(inst.inputs[1] as u8, val);
+            println!(
+                "reg  {}  value  after write {}",
+                inst.inputs[1],
+                interpreter.cpu.read_reg(inst.inputs[1] as u8)
+            );
+            Ok(val)
+        }
 
         IROp::EvalCondition(cond) => {
             let result = interpreter.cpu.cpsr.evaluat_cond(cond);

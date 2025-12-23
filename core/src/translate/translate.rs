@@ -16,9 +16,10 @@ pub enum IROp {
     Neg,
 
     // Logical
+    Mov,
     And,
     Or,
-    Xor,
+    Eor,
     Not,
 
     // Shifts
@@ -174,6 +175,14 @@ impl IRBuilder {
 
     pub fn emit_and(&mut self, a: u32, b: u32) -> u32 {
         self.emit(IROp::And, vec![a, b]).unwrap()
+    }
+
+    pub fn emit_eor(&mut self, a: u32, b: u32) -> u32 {
+        self.emit(IROp::Eor, vec![a, b]).unwrap()
+    }
+
+    pub fn emit_mov(&mut self, a: u32, b: u32) -> u32 {
+        self.emit(IROp::Mov, vec![a, b]).unwrap()
     }
 
     pub fn emit_lsr(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
