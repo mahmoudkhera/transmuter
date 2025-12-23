@@ -1,7 +1,6 @@
 use core::fmt;
 
 /// ARM32 CPU core state (AArch32)
-///
 /// This struct models the architectural state of a single ARM CPU core,
 /// including general registers, banked registers, status registers,
 /// floating-point state, and exclusive monitors.
@@ -55,7 +54,7 @@ impl CPUState {
             regs_irq: [0; 2],
 
             // SVC mode, IRQ/FIQ disabled
-            cpsr: CPSR::new(0x0000_00D3),
+            cpsr: CPSR::new(),
 
             spsr_fiq: 0,
             spsr_svc: 0,
@@ -207,124 +206,92 @@ impl ARMMode {
 /// - Interrupt masks (A/I/F)
 /// - CPU mode
 ///
-#[derive(Debug, Clone, Copy)]
+// CPSR represented as individual boolean fields
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CPSR {
-    bits: u32,
+    // Condition flags (bits 31-27)
+    /// Negative flag (bit 31) — set if last operation was negative
+    pub n: bool,
+    /// Zero flag (bit 30) — set if last operation was zero
+    pub z: bool,
+    /// Carry flag (bit 29) — set on unsigned overflow/borrow
+    pub c: bool,
+    /// Overflow flag (bit 28) — set on signed overflow
+    pub v: bool,
+    /// Saturation flag (bit 27) — set if saturating arithmetic overflowed
+    pub q: bool,
+
+    // Reserved bits 26-9 (not represented as they're unused)
+
+    // Interrupt and abort masks (bits 8-6)
+    /// Asynchronous abort disable (bit 8)
+    pub a: bool,
+    /// IRQ interrupt disable (bit 7)
+    pub i: bool,
+    /// FIQ interrupt disable (bit 6)
+    pub f: bool,
+
+    // Execution state (bit 5)
+    /// Thumb state bit (bit 5)
+    /// - `false` = ARM mode (32-bit instructions)
+    /// - `true`  = Thumb mode (16/32-bit instructions)
+    pub t: bool,
+
+    // CPU mode (bits 4-0)
+    /// Current CPU mode
+    pub mode: ARMMode,
 }
 
 impl CPSR {
-    /// Creates a new CPSR from a raw 32-bit value
-    pub fn new(bits: u32) -> Self {
-        Self { bits }
+    /// Creates a new CPSR with default values (User mode, all flags cleared)
+    pub fn new() -> Self {
+        Self {
+            n: false,
+            z: false,
+            c: false,
+            v: false,
+            q: false,
+            a: false,
+            i: false,
+            f: false,
+            t: false,
+            mode: ARMMode::User,
+        }
     }
-
-    // Condition flags
-
-    /// Negative flag (N) — set if last operation was negative
-    pub fn n(&self) -> bool {
-        (self.bits >> 31) & 1 != 0
-    }
-
-    /// Zero flag (Z) — set if last operation was zero
-    pub fn z(&self) -> bool {
-        (self.bits >> 30) & 1 != 0
-    }
-
-    /// Carry flag (C) — set on unsigned overflow/borrow
-    pub fn c(&self) -> bool {
-        (self.bits >> 29) & 1 != 0
-    }
-
-    /// Overflow flag (V) — set on signed overflow
-    pub fn v(&self) -> bool {
-        (self.bits >> 28) & 1 != 0
-    }
-
-    /// Saturation flag (Q) — set if saturating arithmetic overflowed
-    pub fn q(&self) -> bool {
-        (self.bits >> 27) & 1 != 0
-    }
-
-    // Instruction & execution state
-
-    /// Thumb state bit (T)
-    /// - `false` = ARM mode (32-bit instructions)
-    /// - `true`  = Thumb mode (16/32-bit instructions)
-    pub fn t(&self) -> bool {
-        (self.bits >> 5) & 1 != 0
-    }
-
-    // Interrupt and abort masks
-
-    /// Asynchronous abort disable (A)
-    pub fn a(&self) -> bool {
-        (self.bits >> 8) & 1 != 0
-    }
-
-    /// IRQ interrupt disable (I)
-    pub fn i(&self) -> bool {
-        (self.bits >> 7) & 1 != 0
-    }
-
-    /// FIQ interrupt disable (F)
-    pub fn f(&self) -> bool {
-        (self.bits >> 6) & 1 != 0
-    }
-
-    // CPU mode
-
-    /// Returns the current CPU mode as `ARMMode`
-    pub fn mode(&self) -> ARMMode {
-        ARMMode::from_bits(self.bits).unwrap_or(ARMMode::User)
-    }
-
-    // Flag mutation helper
 
     /// Sets the N, Z, C, and V flags
-    ///
-    /// Preserves all other CPSR bits (mode, interrupts, Thumb state)
     pub fn set_nzcv(&mut self, n: bool, z: bool, c: bool, v: bool) {
-        // Clear existing NZCV bits
-        self.bits &= 0x0FFF_FFFF;
-
-        if n {
-            self.bits |= 1 << 31;
-        }
-        if z {
-            self.bits |= 1 << 30;
-        }
-        if c {
-            self.bits |= 1 << 29;
-        }
-        if v {
-            self.bits |= 1 << 28;
-        }
+        self.n = n;
+        self.z = z;
+        self.c = c;
+        self.v = v;
     }
+
     /// Checks if the condition is met based on the current state of the
     /// N, Z, C, and V flags in the CPSR.
     pub fn evaluat_cond(&mut self, cond: Condition) -> bool {
         match cond {
             // Unsigned Comparisons
-            Condition::EQ => self.z(),  // Z == 1
-            Condition::NE => !self.z(), // Z == 0
-            Condition::CS => self.c(),  // C == 1
-            Condition::CC => !self.c(), // C == 0
+            Condition::EQ => self.z,  // Z == 1
+            Condition::NE => !self.z, // Z == 0
+            Condition::CS => self.c,  // C == 1
+            Condition::CC => !self.c, // C == 0
 
             // Single Flag Checks
-            Condition::MI => self.n(),  // N == 1
-            Condition::PL => !self.n(), // N == 0
-            Condition::VS => self.v(),  // V == 1
-            Condition::VC => !self.v(), // V == 0
+            Condition::MI => self.n,  // N == 1
+            Condition::PL => !self.n, // N == 0
+            Condition::VS => self.v,  // V == 1
+            Condition::VC => !self.v, // V == 0
 
             // Complex Unsigned Comparisons
-            Condition::HI => self.c() && !self.z(), // C == 1 AND Z == 0 (Higher)
-            Condition::LS => !self.c() || self.z(), // C == 0 OR Z == 1 (Lower or Same)
+            Condition::HI => self.c && !self.z, // C == 1 AND Z == 0 (Higher)
+            Condition::LS => !self.c || self.z, // C == 0 OR Z == 1 (Lower or Same)
 
             // Signed Comparisons
-            Condition::GE => self.n() == self.v(), // N == V (Greater than or Equal)
-            Condition::LT => self.n() != self.v(), // N != V (Less than)
-            Condition::GT => !self.z() && (self.n() == self.v()), // Z == 0 AND N == V (Greater than)
-            Condition::LE => self.z() || (self.n() != self.v()), // Z == 1 OR N != V (Less than or Equal)
+            Condition::GE => self.n == self.v, // N == V (Greater than or Equal)
+            Condition::LT => self.n != self.v, // N != V (Less than)
+            Condition::GT => !self.z && (self.n == self.v), // Z == 0 AND N == V (Greater than)
+            Condition::LE => self.z || (self.n != self.v), // Z == 1 OR N != V (Less than or Equal)
 
             // Unconditional/Reserved
             Condition::AL => true,
@@ -393,26 +360,26 @@ impl Condition {
     pub fn passes(&self, cpsr: &CPSR) -> bool {
         match self {
             // Unsigned Comparisons
-            Condition::EQ => cpsr.z(),  // Z == 1
-            Condition::NE => !cpsr.z(), // Z == 0
-            Condition::CS => cpsr.c(),  // C == 1
-            Condition::CC => !cpsr.c(), // C == 0
+            Condition::EQ => cpsr.z,  // Z == 1
+            Condition::NE => !cpsr.z, // Z == 0
+            Condition::CS => cpsr.c,  // C == 1
+            Condition::CC => !cpsr.c, // C == 0
 
             // Single Flag Checks
-            Condition::MI => cpsr.n(),  // N == 1
-            Condition::PL => !cpsr.n(), // N == 0
-            Condition::VS => cpsr.v(),  // V == 1
-            Condition::VC => !cpsr.v(), // V == 0
+            Condition::MI => cpsr.n,  // N == 1
+            Condition::PL => !cpsr.n, // N == 0
+            Condition::VS => cpsr.v,  // V == 1
+            Condition::VC => !cpsr.v, // V == 0
 
             // Complex Unsigned Comparisons
-            Condition::HI => cpsr.c() && !cpsr.z(), // C == 1 AND Z == 0 (Higher)
-            Condition::LS => !cpsr.c() || cpsr.z(), // C == 0 OR Z == 1 (Lower or Same)
+            Condition::HI => cpsr.c && !cpsr.z, // C == 1 AND Z == 0 (Higher)
+            Condition::LS => !cpsr.c || cpsr.z, // C == 0 OR Z == 1 (Lower or Same)
 
             // Signed Comparisons
-            Condition::GE => cpsr.n() == cpsr.v(), // N == V (Greater than or Equal)
-            Condition::LT => cpsr.n() != cpsr.v(), // N != V (Less than)
-            Condition::GT => !cpsr.z() && (cpsr.n() == cpsr.v()), // Z == 0 AND N == V (Greater than)
-            Condition::LE => cpsr.z() || (cpsr.n() != cpsr.v()), // Z == 1 OR N != V (Less than or Equal)
+            Condition::GE => cpsr.n == cpsr.v, // N == V (Greater than or Equal)
+            Condition::LT => cpsr.n != cpsr.v, // N != V (Less than)
+            Condition::GT => !cpsr.z && (cpsr.n == cpsr.v), // Z == 0 AND N == V (Greater than)
+            Condition::LE => cpsr.z || (cpsr.n != cpsr.v), // Z == 1 OR N != V (Less than or Equal)
 
             // Unconditional/Reserved
             Condition::AL => true,

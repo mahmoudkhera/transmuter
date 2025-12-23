@@ -10,17 +10,21 @@ pub enum IROp {
     StoreReg(u8),
 
     // Arithmetic
-    Add,
-    Sub,
-    Mul,
-    Neg,
+    Add(bool),
+    Adc(bool),
+    Sub(bool),
+    Sbc(bool),
+    Rsc(bool),
+    Mul(bool),
+    Neg(bool),
 
     // Logical
-    Mov,
-    And,
-    Or,
-    Eor,
-    Not,
+    Mov(bool),
+    And(bool),
+    Orr(bool),
+    Eor(bool),
+    Not(bool),
+    Mvn(bool),
 
     // Shifts
     Lsr(u32, u32), //Logical Shift Right
@@ -165,24 +169,39 @@ impl IRBuilder {
         self.emit(IROp::StoreReg(reg), vec![value]);
     }
 
-    pub fn emit_add(&mut self, a: u32, b: u32) -> u32 {
-        self.emit(IROp::Add, vec![a, b]).unwrap()
+    pub fn emit_add(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Add(s), vec![a, b]).unwrap()
+    }
+    pub fn emit_adc(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Adc(s), vec![a, b]).unwrap()
     }
 
-    pub fn emit_sub(&mut self, a: u32, b: u32) -> u32 {
-        self.emit(IROp::Sub, vec![a, b]).unwrap()
+    pub fn emit_sub(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Sub(s), vec![a, b]).unwrap()
+    }
+    pub fn emit_rsc(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Rsc(s), vec![b, a]).unwrap()
+    }
+    pub fn emit_rsb(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Rsc(s), vec![b, a]).unwrap()
     }
 
-    pub fn emit_and(&mut self, a: u32, b: u32) -> u32 {
-        self.emit(IROp::And, vec![a, b]).unwrap()
+    pub fn emit_and(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::And(s), vec![a, b]).unwrap()
     }
 
-    pub fn emit_eor(&mut self, a: u32, b: u32) -> u32 {
-        self.emit(IROp::Eor, vec![a, b]).unwrap()
+    pub fn emit_eor(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Eor(s), vec![a, b]).unwrap()
+    }
+    pub fn emit_orr(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Orr(s), vec![a, b]).unwrap()
     }
 
-    pub fn emit_mov(&mut self, a: u32, b: u32) -> u32 {
-        self.emit(IROp::Mov, vec![a, b]).unwrap()
+    pub fn emit_mov(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Mov(s), vec![a, b]).unwrap()
+    }
+    pub fn emit_mvn(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Mvn(s), vec![a, b]).unwrap()
     }
 
     pub fn emit_lsr(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {

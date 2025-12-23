@@ -5,10 +5,11 @@ use core::{
 
 fn main() {
     let program = [
-        0x17, 0x20, 0xA0, 0xE3, // Mov R2, #2
+        0x00, 0x20, 0xE0, 0xE3, // mvn r2 0xFFFF_FFFF
+        0x01, 0x00, 0x92, 0xE2, //add r2, r2, #1, S=1 must update the  carry flag
     ];
 
-    let mut memory = SimpleMemory::new(4);
+    let mut memory = SimpleMemory::new(8);
 
     memory.load_program(0, &program);
 
@@ -30,7 +31,7 @@ fn main() {
 
     println!("ir entry {}", ir_program.entry);
 
-    for (id, block) in ir_program.blocks.iter() {
+    for (_, block) in ir_program.blocks.iter() {
         println!("block {:?}", block);
     }
 

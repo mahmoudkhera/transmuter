@@ -21,20 +21,73 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
             );
             Ok(0)
         }
-        IROp::Add => {
+        IROp::And(s) => {
+            let a = interpreter.get_vreg(inst.inputs[0])?;
+            let b = interpreter.get_vreg(inst.inputs[1])?;
+            let res = a & b;
+
+            if s {
+                interpreter.cpu.cpsr.z = res == 0;
+            }
+            Ok(res)
+        }
+        IROp::Orr(s) => {
+            let a = interpreter.get_vreg(inst.inputs[0])?;
+            let b = interpreter.get_vreg(inst.inputs[1])?;
+            let res = a | b;
+
+            if s {
+                interpreter.cpu.cpsr.z = res == 0;
+            }
+            Ok(res)
+        }
+        IROp::Eor(s) => {
+            let a = interpreter.get_vreg(inst.inputs[0])?;
+            let b = interpreter.get_vreg(inst.inputs[1])?;
+            let res = a ^ b;
+
+            if s {
+                interpreter.cpu.cpsr.z = res == 0;
+            }
+            Ok(res)
+        }
+
+        IROp::Add(s) => {
             let a = interpreter.get_vreg(inst.inputs[0])?;
             let b = interpreter.get_vreg(inst.inputs[1])?;
             let result = a.wrapping_add(b);
+
+            if s {
+                let c = (a as u64 + b as u64) > 0xFFFF_FFFF;
+                let v = ((a ^ result) & (b ^ result)) & 0x8000_0000 != 0;
+                let z = result == 0;
+                let n = (result >> 31) & 1 == 1;
+                interpreter.cpu.cpsr.set_nzcv(n, z, c, v);
+            }
+
+            println!(
+                "  the add must update the carry flag {result}   c{}",
+                interpreter.cpu.cpsr.n
+            );
             Ok(result)
         }
-        IROp::Mov => {
+
+        IROp::Mov(s) => {
             let val = interpreter.get_vreg(inst.inputs[1])?;
-            interpreter.cpu.write_reg(inst.inputs[1] as u8, val);
-            println!(
-                "reg  {}  value  after write {}",
-                inst.inputs[1],
-                interpreter.cpu.read_reg(inst.inputs[1] as u8)
-            );
+
+            if s {
+                interpreter.cpu.cpsr.z = val == 0;
+            }
+
+            Ok(val)
+        }
+        IROp::Mvn(s) => {
+            let val = !interpreter.get_vreg(inst.inputs[1])?;
+
+            if s {
+                interpreter.cpu.cpsr.z = val == 0;
+            }
+
             Ok(val)
         }
 
