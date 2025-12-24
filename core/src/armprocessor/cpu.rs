@@ -9,7 +9,7 @@ use core::fmt;
 pub struct CPUState {
     //  General-purpose registers
     /// R0–R15 (R15 = PC)
-    regs: [u32; 16],
+    pub regs: [u32; 16],
 
     //   Banked registers (privileged modes)
     /// FIQ mode: R8–R14
@@ -265,6 +265,9 @@ impl CPSR {
         self.z = z;
         self.c = c;
         self.v = v;
+    }
+    pub fn get_nzcv(&mut self) -> (bool, bool, bool, bool) {
+        (self.n, self.z, self.c, self.v)
     }
 
     /// Checks if the condition is met based on the current state of the

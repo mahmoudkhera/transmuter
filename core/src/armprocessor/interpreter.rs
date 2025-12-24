@@ -21,6 +21,9 @@ impl IRInterpreter {
     pub fn excute(&mut self, program: &IRProgram) -> Result<(), String> {
         let mut current_block = program.entry;
 
+        println!();
+        println!();
+
         println!(" Starting IR ");
 
         loop {
@@ -35,13 +38,19 @@ impl IRInterpreter {
 
             // Execute each instruction in the block
             for (_, inst) in block.instructions.iter().enumerate() {
-                println!("instruction {:?}", inst);
                 let res = exeinst::execute_instruction(inst, self)?;
 
                 // Store result if instruction produces one
                 if let Some(output) = inst.output {
                     self.vregs.insert(output, res);
-                    println!("    v{} = {}", output, res);
+                    print!("inst {}    v{} = {}", inst.op.name(), output, res);
+                    let nzcv = self.cpu.cpsr.get_nzcv();
+                    println!(
+                        " cpsr n {} ,z {}, c {} ,v {}",
+                        nzcv.0, nzcv.1, nzcv.2, nzcv.3
+                    );
+                } else {
+                    println!("inst {} ", inst.op.name());
                 }
 
                 // Handle control flow
@@ -78,6 +87,11 @@ impl IRInterpreter {
                 // No explicit branch, check if we have a fallthrough
                 if block.successors.is_empty() {
                     println!("=== Execution Complete (no successors) ===\n");
+
+                    for (i, reg) in self.cpu.regs.iter().enumerate() {
+                        println!("reg{} = {}", i, reg);
+                    }
+
                     return Ok(());
                 }
                 current_block = block.successors[0];

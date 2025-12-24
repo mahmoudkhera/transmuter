@@ -14,6 +14,7 @@ pub enum IROp {
     Adc(bool),
     Sub(bool),
     Sbc(bool),
+    Rsb(bool),
     Rsc(bool),
     Mul(bool),
     Neg(bool),
@@ -22,9 +23,12 @@ pub enum IROp {
     Mov(bool),
     And(bool),
     Orr(bool),
+    Bic(bool),
     Eor(bool),
     Not(bool),
     Mvn(bool),
+    Tst,
+    Teq,
 
     // Shifts
     Lsr(u32, u32), //Logical Shift Right
@@ -49,6 +53,61 @@ pub enum IROp {
     Return,
 
     Nop,
+}
+impl IROp {
+    pub fn name(&self) -> &'static str {
+        match self {
+            // Constants and Register Operations
+            IROp::Const(_) => "Const",
+            IROp::LoadReg(_) => "LoadReg",
+            IROp::StoreReg(_) => "StoreReg",
+
+            // Arithmetic
+            IROp::Add(_) => "Add",
+            IROp::Adc(_) => "Adc",
+            IROp::Sub(_) => "Sub",
+            IROp::Sbc(_) => "Sbc",
+            IROp::Rsb(_) => "Rsb",
+            IROp::Rsc(_) => "Rsc",
+            IROp::Mul(_) => "Mul",
+            IROp::Neg(_) => "Neg",
+
+            // Logical
+            IROp::Mov(_) => "Mov",
+            IROp::And(_) => "And",
+            IROp::Orr(_) => "Orr",
+            IROp::Bic(_) => "Bic",
+            IROp::Eor(_) => "Eor",
+            IROp::Not(_) => "Not",
+            IROp::Mvn(_) => "Mvn",
+            IROp::Tst => "Tst",
+            IROp::Teq => "Teq",
+
+            // Shifts
+            IROp::Lsr(_, _) => "Lsr",
+            IROp::Asr(_, _) => "Asr",
+            IROp::Lsl(_, _) => "Lsl",
+            IROp::Ror(_, _) => "Ror",
+
+            // Comparison and Flags
+            IROp::Cmp => "Cmp",
+            IROp::SetFlag(_) => "SetFlag",
+            IROp::GetFlag(_) => "GetFlag",
+            IROp::EvalCondition(_) => "EvalCondition",
+
+            // Memory
+            IROp::Load => "Load",
+            IROp::Store => "Store",
+
+            // Control Flow
+            IROp::Branch(_) => "Branch",
+            IROp::BranchCond(_) => "BranchCond",
+            IROp::Call(_) => "Call",
+            IROp::Return => "Return",
+
+            IROp::Nop => "Nop",
+        }
+    }
 }
 #[derive(Debug, Clone, Copy)]
 pub enum Flag {
@@ -142,6 +201,8 @@ impl IRBuilder {
             | IROp::BranchCond(_)
             | IROp::Call(_)
             | IROp::Return
+            | IROp::Tst
+            | IROp::Teq
             | IROp::Nop => None,
             _ => Some(self.alloc_vreg()),
         };
@@ -195,6 +256,15 @@ impl IRBuilder {
     }
     pub fn emit_orr(&mut self, a: u32, b: u32, s: bool) -> u32 {
         self.emit(IROp::Orr(s), vec![a, b]).unwrap()
+    }
+    pub fn emit_bic(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Bic(s), vec![a, b]).unwrap()
+    }
+    pub fn emit_tst(&mut self, a: u32, b: u32) {
+        self.emit(IROp::Tst, vec![a, b]);
+    }
+    pub fn emit_teq(&mut self, a: u32, b: u32) {
+        self.emit(IROp::Teq, vec![a, b]);
     }
 
     pub fn emit_mov(&mut self, a: u32, b: u32, s: bool) -> u32 {

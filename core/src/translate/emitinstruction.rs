@@ -36,15 +36,29 @@ pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(
         Instruction::ORR_rri { args } => {
             emit_dp_immediate(ir_builder, args, IRBuilder::emit_orr);
         }
+        Instruction::BIC_rri { args } => {
+            emit_dp_immediate(ir_builder, args, IRBuilder::emit_bic);
+        }
+        Instruction::TST_xri { args } => {
+            let imm32 = ror32(args.imm, args.rot * 2);
+            let result = ir_builder.emit_const(imm32);
+            let rn = ir_builder.emit_load_reg(args.rn as u8);
+            ir_builder.emit_tst(rn, result);
+        }
+        Instruction::TEQ_xri { args } => {
+            let imm32 = ror32(args.imm, args.rot * 2);
+            let result = ir_builder.emit_const(imm32);
+            let rn = ir_builder.emit_load_reg(args.rn as u8);
+            ir_builder.emit_teq(rn, result);
+        }
         Instruction::SUB_rri { args } => {
             emit_dp_immediate(ir_builder, args, IRBuilder::emit_sub);
         }
         Instruction::ADD_rri { args } => {
-            println!("emit add ");
             emit_dp_immediate(ir_builder, args, IRBuilder::emit_add);
         }
-        Instruction::ADC_rrri { args } => {
-            emit_data_processing(ir_builder, args, IRBuilder::emit_adc);
+        Instruction::ADC_rri { args } => {
+            emit_dp_immediate(ir_builder, args, IRBuilder::emit_adc);
         }
         Instruction::SBC_rri { args } => {
             emit_dp_immediate(ir_builder, args, IRBuilder::emit_sub);

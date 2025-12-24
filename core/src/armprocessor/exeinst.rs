@@ -14,86 +14,40 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::StoreReg(reg) => {
             let val = interpreter.get_vreg(inst.inputs[0])?;
             interpreter.cpu.write_reg(reg, val);
-            println!(
-                "reg  {}  value  after write {}",
-                reg,
-                interpreter.cpu.read_reg(reg)
-            );
+
             Ok(0)
         }
-        IROp::And(s) => {
-            let a = interpreter.get_vreg(inst.inputs[0])?;
-            let b = interpreter.get_vreg(inst.inputs[1])?;
-            let res = a & b;
-
-            if s {
-                interpreter.cpu.cpsr.z = res == 0;
-            }
-            Ok(res)
-        }
-        IROp::Orr(s) => {
-            let a = interpreter.get_vreg(inst.inputs[0])?;
-            let b = interpreter.get_vreg(inst.inputs[1])?;
-            let res = a | b;
-
-            if s {
-                interpreter.cpu.cpsr.z = res == 0;
-            }
-            Ok(res)
-        }
-        IROp::Eor(s) => {
-            let a = interpreter.get_vreg(inst.inputs[0])?;
-            let b = interpreter.get_vreg(inst.inputs[1])?;
-            let res = a ^ b;
-
-            if s {
-                interpreter.cpu.cpsr.z = res == 0;
-            }
-            Ok(res)
-        }
-
-        IROp::Add(s) => {
-            let a = interpreter.get_vreg(inst.inputs[0])?;
-            let b = interpreter.get_vreg(inst.inputs[1])?;
-            let result = a.wrapping_add(b);
-
-            if s {
-                let c = (a as u64 + b as u64) > 0xFFFF_FFFF;
-                let v = ((a ^ result) & (b ^ result)) & 0x8000_0000 != 0;
-                let z = result == 0;
-                let n = (result >> 31) & 1 == 1;
-                interpreter.cpu.cpsr.set_nzcv(n, z, c, v);
-            }
-
-            println!(
-                "  the add must update the carry flag {result}   c{}",
-                interpreter.cpu.cpsr.n
-            );
-            Ok(result)
-        }
+        IROp::And(s) => execute_logical(interpreter, &inst.inputs, IROp::And(s)),
+        IROp::Orr(s) => execute_logical(interpreter, &inst.inputs, IROp::Orr(s)),
+        IROp::Eor(s) => execute_logical(interpreter, &inst.inputs, IROp::Eor(s)),
+        IROp::Bic(s) => execute_logical(interpreter, &inst.inputs, IROp::Bic(s)),
+        IROp::Not(s) => execute_logical(interpreter, &inst.inputs, IROp::Not(s)),
+        IROp::Tst => execute_logical(interpreter, &inst.inputs, IROp::Tst),
+        IROp::Teq => execute_logical(interpreter, &inst.inputs, IROp::Teq),
+        IROp::Add(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Add(s)),
+        IROp::Adc(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Adc(s)),
+        IROp::Sub(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Sub(s)),
+        IROp::Sbc(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Sbc(s)),
+        IROp::Rsb(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Rsb(s)),
+        IROp::Rsc(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Rsc(s)),
 
         IROp::Mov(s) => {
             let val = interpreter.get_vreg(inst.inputs[1])?;
-
             if s {
                 interpreter.cpu.cpsr.z = val == 0;
             }
-
             Ok(val)
         }
         IROp::Mvn(s) => {
             let val = !interpreter.get_vreg(inst.inputs[1])?;
-
             if s {
                 interpreter.cpu.cpsr.z = val == 0;
             }
-
             Ok(val)
         }
 
         IROp::EvalCondition(cond) => {
             let result = interpreter.cpu.cpsr.evaluat_cond(cond);
-            println!("evaluation result {}", result);
             Ok(result as u32)
         }
         IROp::BranchCond(_) => {
@@ -108,5 +62,104 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::Branch(_) | IROp::Call(_) | IROp::Return | IROp::Nop => Ok(0),
 
         _ => Err(format!("not implemented or can not be excuted")),
+    }
+}
+
+fn execute_arthimitic(
+    interpreter: &mut IRInterpreter,
+    inst_inputs: &Vec<u32>,
+    ir: IROp,
+) -> Result<u32, String> {
+    let a_u32 = interpreter.get_vreg(inst_inputs[0])?;
+    let b_u32 = interpreter.get_vreg(inst_inputs[1])?;
+
+    let a = a_u32 as u64;
+    let b = b_u32 as u64;
+    let c_in = interpreter.cpu.cpsr.c as u64;
+
+    let (s, result, carry, overflow) = match ir {
+        IROp::Add(s) => {
+            let wide = a + b;
+            let res = wide as u32;
+            let c = wide > 0xFFFF_FFFF;
+            let v = ((!(a_u32 ^ b_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
+        IROp::Adc(s) => {
+            let wide = a + b + c_in;
+            let res = wide as u32;
+            let c = wide > 0xFFFF_FFFF;
+            let v = ((!(a_u32 ^ (b_u32 + c_in as u32)) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
+        IROp::Sbc(s) => {
+            let sub = b_u32 + (1 - c_in as u32);
+            let res = a_u32.wrapping_sub(sub);
+            let c = a_u32 >= sub;
+            let v = (((a_u32 ^ sub) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
+        IROp::Rsb(s) => {
+            let res = b_u32.wrapping_sub(a_u32);
+            let c = b_u32 >= a_u32;
+            let v = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
+
+        IROp::Rsc(s) => {
+            let sub = a_u32 + (1 - c_in as u32);
+            let res = b_u32.wrapping_sub(sub);
+            let c = b_u32 >= sub;
+            let v = (((b_u32 ^ sub) & (b_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
+
+        _ => return Err("not an arithmetic instruction".to_string()),
+    };
+    if s {
+        let n = (result & 0x8000_0000) != 0;
+        let z = result == 0;
+        interpreter.cpu.cpsr.set_nzcv(n, z, carry, overflow);
+    }
+    Ok(result)
+}
+
+fn execute_logical(
+    interpreter: &mut IRInterpreter,
+    inst_inputs: &Vec<u32>,
+    ir: IROp,
+) -> Result<u32, String> {
+    let a = interpreter.get_vreg(inst_inputs[0])?;
+    let b = interpreter.get_vreg(inst_inputs[1])?;
+
+    // Carry comes from shifter, NOT from logic
+    let carry = interpreter.cpu.cpsr.c;
+
+    let (s, result, write_result) = match ir {
+        IROp::And(s) => (s, a & b, true),
+        IROp::Eor(s) => (s, a ^ b, true),
+        IROp::Orr(s) => (s, a | b, true),
+        IROp::Bic(s) => (s, a & !b, true),
+        IROp::Tst => (true, a & b, false),
+        IROp::Teq => (true, a ^ b, false),
+
+        _ => return Err("not a logical instruction".to_string()),
+    };
+
+    if s {
+        let n = (result & 0x8000_0000) != 0;
+        let z = result == 0;
+
+        // V is unchanged
+        interpreter
+            .cpu
+            .cpsr
+            .set_nzcv(n, z, carry, interpreter.cpu.cpsr.v);
+    }
+
+    if write_result {
+        Ok(result)
+    } else {
+        Ok(0) // TST / TEQ do not write back
     }
 }
