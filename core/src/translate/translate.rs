@@ -31,10 +31,10 @@ pub enum IROp {
     Teq,
 
     // Shifts
-    Lsr(u32, u32), //Logical Shift Right
-    Asr(u32, u32), //Arithmetic Shift Right
-    Lsl(u32, u32), //Logical Shift Left
-    Ror(u32, u32), //Rotate Right
+    Lsr, //Logical Shift Right
+    Asr, //Arithmetic Shift Right
+    Lsl, //Logical Shift Left
+    Ror, //Rotate Right
 
     // Comparison and Flags
     Cmp,
@@ -88,10 +88,10 @@ impl IROp {
             IROp::Teq => "Teq",
 
             // Shifts
-            IROp::Lsr(_, _) => "Lsr",
-            IROp::Asr(_, _) => "Asr",
-            IROp::Lsl(_, _) => "Lsl",
-            IROp::Ror(_, _) => "Ror",
+            IROp::Lsr => "Lsr",
+            IROp::Asr => "Asr",
+            IROp::Lsl => "Lsl",
+            IROp::Ror => "Ror",
 
             // Comparison and Flags
             IROp::SetFlag(_) => "SetFlag",
@@ -288,21 +288,17 @@ impl IRBuilder {
         self.emit(IROp::Mvn(s), vec![a, b]).unwrap()
     }
 
-    pub fn emit_lsr(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Lsr(shty, shim), vec![reg, shty, shim])
-            .unwrap()
+    pub fn emit_lsr(&mut self, a: u32, b: u32) -> u32 {
+        self.emit(IROp::Lsr, vec![a, b]).unwrap()
     }
-    pub fn emit_lsl(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Lsl(shty, shim), vec![reg, shty, shim])
-            .unwrap()
+    pub fn emit_lsl(&mut self, a: u32, b: u32) -> u32 {
+        self.emit(IROp::Lsl, vec![a, b]).unwrap()
     }
-    pub fn emit_asr(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Asr(shty, shim), vec![reg, shty, shim])
-            .unwrap()
+    pub fn emit_asr(&mut self, a: u32, b: u32) -> u32 {
+        self.emit(IROp::Asr, vec![a, b]).unwrap()
     }
-    pub fn emit_ror(&mut self, reg: u32, shty: u32, shim: u32) -> u32 {
-        self.emit(IROp::Ror(shty, shim), vec![reg, shty, shim])
-            .unwrap()
+    pub fn emit_ror(&mut self, a: u32, b: u32) -> u32 {
+        self.emit(IROp::Ror, vec![a, b]).unwrap()
     }
 
     pub fn emit_branch(&mut self, target: usize) {

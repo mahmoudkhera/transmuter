@@ -57,11 +57,10 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
             let cond = interpreter.get_vreg(inst.inputs[0])?;
             Ok(cond)
         }
-        IROp::Lsl(_, _) => {
-            let reg = interpreter.get_vreg(inst.inputs[0])?;
-
-            Ok(reg)
-        }
+        IROp::Lsl => execute_shift(interpreter, &inst.inputs, IROp::Lsl),
+        IROp::Lsr => execute_shift(interpreter, &inst.inputs, IROp::Lsr),
+        IROp::Asr => execute_shift(interpreter, &inst.inputs, IROp::Asr),
+        IROp::Ror => execute_shift(interpreter, &inst.inputs, IROp::Ror),
         IROp::Branch(_) | IROp::Call(_) | IROp::Return | IROp::Nop => Ok(0),
 
         _ => Err(format!("not implemented or can not be excuted")),
@@ -109,7 +108,7 @@ fn execute_arthimitic(
             (s, res, c, v)
         }
         IROp::Rsb(s) => {
-            let res = b_u32.wrapping_sub(a_u32);
+            let res =1- b_u32.wrapping_sub(a_u32);
             let c = b_u32 >= a_u32;
             let v = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
             (s, res, c, v)
@@ -130,6 +129,7 @@ fn execute_arthimitic(
         let z = result == 0;
         interpreter.cpu.cpsr.set_nzcv(n, z, carry, overflow);
     }
+    
     Ok(result)
 }
 
@@ -214,4 +214,58 @@ fn execute_compare(
     interpreter.cpu.cpsr.set_nzcv(n, z, c, v);
 
     Ok(0) // CMP / CMN do not write to a register
+}
+
+fn execute_shift(
+    interpreter: &mut IRInterpreter,
+    inst_inputs: &Vec<u32>,
+    ir: IROp,
+) -> Result<u32, String> {
+    let a = interpreter.get_vreg(inst_inputs[0])?;
+    let b = interpreter.get_vreg(inst_inputs[1])?;
+
+    //  not that in ARM, only the bottom 8 bits of the shift register are used
+    let shift_amount = b & 0xFF;
+
+    let result = match ir {
+        // Logical Shift Left
+        IROp::Lsl => {
+            if shift_amount >= 32 {
+                0
+            } else {
+                a << shift_amount
+            }
+        }
+
+        // Logical Shift Right
+        IROp::Lsr => {
+            if shift_amount >= 32 {
+                0
+            } else {
+                a >> shift_amount
+            }
+        }
+
+        // Arithmetic Shift Right (preserves the sign bit)
+        IROp::Asr => {
+            if shift_amount >= 32 {
+                if (a as i32) < 0 { 0xFFFFFFFF } else { 0 }
+            } else {
+                ((a as i32) >> shift_amount) as u32
+            }
+        }
+
+        // Rotate Right
+        IROp::Ror => {
+            let amount = shift_amount % 32;
+            if amount == 0 {
+                a
+            } else {
+                (a >> amount) | (a << (32 - amount))
+            }
+        }
+        _ => return Err("not a shift instruction".to_string()),
+    };
+
+    Ok(result)
 }

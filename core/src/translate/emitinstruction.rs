@@ -1,5 +1,5 @@
 use crate::{
-    arm32arch::{Instruction, arg_s_rri_rot, arg_s_rrr_shi},
+    arm32arch::{Instruction, arg_s_rri_rot, arg_s_rrr_shi, arg_s_rrr_shr},
     translate::IRBuilder,
 };
 
@@ -131,6 +131,56 @@ pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(
             update_flag_dp(ir_builder, args, IRBuilder::emit_cmn);
         }
 
+        //------------- Data-processing (register-shifted register)-------------//
+        Instruction::AND_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_and);
+        }
+        Instruction::EOR_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_eor);
+        }
+        Instruction::ORR_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_orr);
+        }
+        Instruction::BIC_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_bic);
+        }
+        Instruction::SUB_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_sub);
+        }
+        Instruction::SBC_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_sbc);
+        }
+        Instruction::ADD_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_add);
+        }
+        Instruction::ADC_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_adc);
+        }
+        Instruction::RSB_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_sub);
+        }
+        Instruction::RSC_rrrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_rsc);
+        }
+        Instruction::MOV_rxrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_mov);
+        }
+        Instruction::MVN_rxrr { args } => {
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_mvn);
+        }
+        Instruction::TST_xrrr { args } => {
+            update_flag_dp_shifted_reg(ir_builder, args, IRBuilder::emit_tst);
+        }
+        Instruction::TEQ_xrrr { args } => {
+            update_flag_dp_shifted_reg(ir_builder, args, IRBuilder::emit_teq);
+        }
+        Instruction::CMP_xrrr { args } => {
+            update_flag_dp_shifted_reg(ir_builder, args, IRBuilder::emit_cmp);
+        }
+        Instruction::CMN_xrrr { args } => {
+            update_flag_dp_shifted_reg(ir_builder, args, IRBuilder::emit_cmn);
+        }
+
         _ => println!("Unkown instruction"),
     }
 
@@ -159,6 +209,42 @@ pub fn update_flag_dp(ir_builder: &mut IRBuilder, args: &arg_s_rrr_shi, op: DpFl
 
     let rn = ir_builder.emit_load_reg(args.rn as u8);
     op(ir_builder, rn, result);
+}
+
+// # Data-processing (register-shifted register)
+
+type DpShiftedRegOperand = fn(&mut IRBuilder, u32, u32, bool) -> u32;
+/// emit ir for instruction rd=rn (operation) (rm+shift +shfit type
+pub fn emit_data_shiftedreg_processing(
+    ir_builder: &mut IRBuilder,
+    args: &arg_s_rrr_shr,
+    op: DpShiftedRegOperand,
+) {
+    let rm = ir_builder.emit_load_reg(args.rm as u8);
+    let rs = ir_builder.emit_load_reg(args.rs as u8);
+
+    let res = rrri_shift(ir_builder, rm, rs, args.shty);
+
+    let rn = ir_builder.emit_load_reg(args.rn as u8);
+
+    let result = op(ir_builder, rn, res, args.s == 1);
+    ir_builder.emit_store_reg(args.rd as u8, result);
+}
+// emit update flag Data-processing (register)
+type DpShiftedRegFlag = fn(&mut IRBuilder, u32, u32);
+
+fn update_flag_dp_shifted_reg(
+    ir_builder: &mut IRBuilder,
+    args: &arg_s_rrr_shr,
+    op: DpShiftedRegFlag,
+) {
+    let rm = ir_builder.emit_load_reg(args.rm as u8);
+    let rs = ir_builder.emit_load_reg(args.rs as u8);
+
+    let res = rrri_shift(ir_builder, rm, rs, args.shty);
+
+    let rn = ir_builder.emit_load_reg(args.rn as u8);
+    op(ir_builder, rn, res);
 }
 
 // # Data-processing (immediate)
@@ -192,12 +278,12 @@ fn ror32(value: u32, shift: u32) -> u32 {
     }
 }
 
-pub fn rrri_shift(ir_builder: &mut IRBuilder, rm: u32, shim: u32, shty: u32) -> u32 {
+pub fn rrri_shift(ir_builder: &mut IRBuilder, rm: u32, shift_value: u32, shty: u32) -> u32 {
     match shty {
-        0b00 => ir_builder.emit_lsl(rm, shty, shim),
-        0b01 => ir_builder.emit_lsr(rm, shty, shim),
-        0b10 => ir_builder.emit_asr(rm, shty, shim),
-        0b11 => ir_builder.emit_ror(rm, shty, shim),
+        0b00 => ir_builder.emit_lsl(rm, shift_value),
+        0b01 => ir_builder.emit_lsr(rm, shift_value),
+        0b10 => ir_builder.emit_asr(rm, shift_value),
+        0b11 => ir_builder.emit_ror(rm, shift_value),
         _ => 0,
     }
 }
