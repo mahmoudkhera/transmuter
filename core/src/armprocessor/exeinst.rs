@@ -16,7 +16,7 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
             interpreter.cpu.write_reg(reg, val);
             println!("reg{}  = 0x{:x}", reg, val);
 
-            Ok(0)
+            Ok(inst.inputs[0])
         }
         IROp::And(s) => execute_logical(interpreter, &inst.inputs, IROp::And(s)),
         IROp::Orr(s) => execute_logical(interpreter, &inst.inputs, IROp::Orr(s)),
@@ -59,8 +59,8 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         }
         IROp::Lsl(_, _) => {
             let reg = interpreter.get_vreg(inst.inputs[0])?;
-            let shim = interpreter.get_vreg(inst.inputs[2])?;
-            Ok(reg << (shim))
+
+            Ok(reg)
         }
         IROp::Branch(_) | IROp::Call(_) | IROp::Return | IROp::Nop => Ok(0),
 
