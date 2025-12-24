@@ -73,7 +73,6 @@ impl MemoryInterface for SimpleMemory {
         if addr + 4 > self.data.len() {
             return Err(format!("Memory read out of bounds: 0x{:08X}", addr));
         }
-        println!("read u32 ");
 
         // 2. Read bytes and assemble them in Little-Endian (LE) order.
         // ARM CPUs can be configured for Big-Endian, but Little-Endian is the default.

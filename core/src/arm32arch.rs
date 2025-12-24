@@ -1939,6 +1939,7 @@ pub fn decode_instruction(inst: u32) -> Option<Instruction> {
     }
     if (inst & 0x0fe00000) == 0x02400000 {
         // Matched: SUB_rri
+
         let args = extract_s_rri_rot(inst);
         return Some(Instruction::SUB_rri { args });
     }

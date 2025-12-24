@@ -38,6 +38,8 @@ pub enum IROp {
 
     // Comparison and Flags
     Cmp,
+    Cmn,
+
     SetFlag(Flag),
     GetFlag(Flag),
     EvalCondition(Condition),
@@ -71,6 +73,8 @@ impl IROp {
             IROp::Rsc(_) => "Rsc",
             IROp::Mul(_) => "Mul",
             IROp::Neg(_) => "Neg",
+            IROp::Cmp => "Cmp",
+            IROp::Cmn => "Cmn",
 
             // Logical
             IROp::Mov(_) => "Mov",
@@ -90,7 +94,6 @@ impl IROp {
             IROp::Ror(_, _) => "Ror",
 
             // Comparison and Flags
-            IROp::Cmp => "Cmp",
             IROp::SetFlag(_) => "SetFlag",
             IROp::GetFlag(_) => "GetFlag",
             IROp::EvalCondition(_) => "EvalCondition",
@@ -203,6 +206,8 @@ impl IRBuilder {
             | IROp::Return
             | IROp::Tst
             | IROp::Teq
+            | IROp::Cmp
+            | IROp::Cmn
             | IROp::Nop => None,
             _ => Some(self.alloc_vreg()),
         };
@@ -240,6 +245,9 @@ impl IRBuilder {
     pub fn emit_sub(&mut self, a: u32, b: u32, s: bool) -> u32 {
         self.emit(IROp::Sub(s), vec![a, b]).unwrap()
     }
+    pub fn emit_sbc(&mut self, a: u32, b: u32, s: bool) -> u32 {
+        self.emit(IROp::Sbc(s), vec![a, b]).unwrap()
+    }
     pub fn emit_rsc(&mut self, a: u32, b: u32, s: bool) -> u32 {
         self.emit(IROp::Rsc(s), vec![b, a]).unwrap()
     }
@@ -265,6 +273,12 @@ impl IRBuilder {
     }
     pub fn emit_teq(&mut self, a: u32, b: u32) {
         self.emit(IROp::Teq, vec![a, b]);
+    }
+    pub fn emit_cmp(&mut self, a: u32, b: u32) {
+        self.emit(IROp::Cmp, vec![a, b]);
+    }
+    pub fn emit_cmn(&mut self, a: u32, b: u32) {
+        self.emit(IROp::Cmn, vec![a, b]);
     }
 
     pub fn emit_mov(&mut self, a: u32, b: u32, s: bool) -> u32 {

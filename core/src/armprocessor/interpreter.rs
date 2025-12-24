@@ -43,14 +43,12 @@ impl IRInterpreter {
                 // Store result if instruction produces one
                 if let Some(output) = inst.output {
                     self.vregs.insert(output, res);
-                    print!("inst {}    v{} = {}", inst.op.name(), output, res);
+                    print!("inst {:?}   v{}  = 0x{:x}", inst.op, output, res);
                     let nzcv = self.cpu.cpsr.get_nzcv();
                     println!(
                         " cpsr n {} ,z {}, c {} ,v {}",
                         nzcv.0, nzcv.1, nzcv.2, nzcv.3
                     );
-                } else {
-                    println!("inst {} ", inst.op.name());
                 }
 
                 // Handle control flow
@@ -89,7 +87,7 @@ impl IRInterpreter {
                     println!("=== Execution Complete (no successors) ===\n");
 
                     for (i, reg) in self.cpu.regs.iter().enumerate() {
-                        println!("reg{} = {}", i, reg);
+                        println!("reg{} = 0x{:08X}", i, reg);
                     }
 
                     return Ok(());

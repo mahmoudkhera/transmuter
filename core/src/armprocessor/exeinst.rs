@@ -14,6 +14,7 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::StoreReg(reg) => {
             let val = interpreter.get_vreg(inst.inputs[0])?;
             interpreter.cpu.write_reg(reg, val);
+            println!("reg{}  = 0x{:x}", reg, val);
 
             Ok(0)
         }
@@ -30,6 +31,8 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::Sbc(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Sbc(s)),
         IROp::Rsb(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Rsb(s)),
         IROp::Rsc(s) => execute_arthimitic(interpreter, &inst.inputs, IROp::Rsc(s)),
+        IROp::Cmp => execute_compare(interpreter, &inst.inputs, IROp::Cmp),
+        IROp::Cmn => execute_compare(interpreter, &inst.inputs, IROp::Cmn),
 
         IROp::Mov(s) => {
             let val = interpreter.get_vreg(inst.inputs[1])?;
@@ -99,6 +102,12 @@ fn execute_arthimitic(
             let v = (((a_u32 ^ sub) & (a_u32 ^ res)) & 0x8000_0000) != 0;
             (s, res, c, v)
         }
+        IROp::Sub(s) => {
+            let res = a_u32.wrapping_sub(b_u32);
+            let c = a_u32 >= b_u32; // NOT borrow
+            let v = (((a_u32 ^ b_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
         IROp::Rsb(s) => {
             let res = b_u32.wrapping_sub(a_u32);
             let c = b_u32 >= a_u32;
@@ -162,4 +171,47 @@ fn execute_logical(
     } else {
         Ok(0) // TST / TEQ do not write back
     }
+}
+
+fn execute_compare(
+    interpreter: &mut IRInterpreter,
+    inst_inputs: &Vec<u32>,
+    ir: IROp,
+) -> Result<u32, String> {
+    // Get the operand values
+    let a = interpreter.get_vreg(inst_inputs[0])? as u64;
+    let b = interpreter.get_vreg(inst_inputs[1])? as u64;
+
+    // Carry and overflow calculation
+    let (n, z, c, v) = match ir {
+        IROp::Cmp => {
+            // CMP: a - b
+            let res = a.wrapping_sub(b);
+            let result32 = res as u32;
+
+            let n = (result32 & 0x8000_0000) != 0;
+            let z = result32 == 0;
+            let c = a >= b; // borrow not occurred
+            let v = ((a as u32 ^ b as u32) & (a as u32 ^ result32) & 0x8000_0000) != 0;
+
+            (n, z, c, v)
+        }
+        IROp::Cmn => {
+            // CMN: a + b
+            let res = a.wrapping_add(b);
+            let result32 = res as u32;
+
+            let n = (result32 & 0x8000_0000) != 0;
+            let z = result32 == 0;
+            let c = res > 0xFFFF_FFFF; // carry out
+            let v = ((!(a as u32) ^ b as u32) & (a as u32 ^ result32) & 0x8000_0000) != 0;
+
+            (n, z, c, v)
+        }
+        _ => return Err("not a compare instruction".to_string()),
+    };
+
+    interpreter.cpu.cpsr.set_nzcv(n, z, c, v);
+
+    Ok(0) // CMP / CMN do not write to a register
 }

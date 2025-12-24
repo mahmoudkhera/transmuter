@@ -4,12 +4,14 @@ use core::{
 };
 
 fn main() {
-    let program = [
-        0x00, 0x20, 0xE0, 0xE3, // mvn r2 0xFFFF_FFFF
-        0x01, 0x00, 0x92, 0xE2, //add r2, r2, #1, S=1 must update the  carry flag
+    let program: Vec<u8> = vec![
+        // ADD r0, r1, #1, S=1 (immediate, rotate=0)
+        0x01, 0x00, 0x91, 0xE2, // r0 = r1 + 1
+        // SUB r2, r0, #2, S=1 (immediate, rotate=0)
+        0x02, 0x20, 0x50, 0xE2, // r2 = r0 - 2  022052E2,
     ];
 
-    let mut memory = SimpleMemory::new(8);
+    let mut memory = SimpleMemory::new(program.len());
 
     memory.load_program(0, &program);
 
@@ -31,9 +33,9 @@ fn main() {
 
     println!("ir entry {}", ir_program.entry);
 
-    for (_, block) in ir_program.blocks.iter() {
-        println!("block {:?}", block);
-    }
+    // for (_, block) in ir_program.blocks.iter() {
+    //     println!("block {:?}", block);
+    // }
 
     let mut inter = IRInterpreter::new();
     inter.excute(&ir_program).unwrap();
