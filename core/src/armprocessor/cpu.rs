@@ -266,7 +266,7 @@ impl CPSR {
         self.c = c;
         self.v = v;
     }
-    pub fn get_nzcv(&mut self) -> (bool, bool, bool, bool) {
+    pub fn get_nzcv(&self) -> (bool, bool, bool, bool) {
         (self.n, self.z, self.c, self.v)
     }
 

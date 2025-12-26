@@ -111,7 +111,7 @@ fn execute_arthimitic(
             (s, res, c, v)
         }
         IROp::Rsb(s) => {
-            let res = 1 - b_u32.wrapping_sub(a_u32);
+            let res = b_u32.wrapping_sub(a_u32);
             let c = b_u32 >= a_u32;
             let v = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
             (s, res, c, v)
@@ -228,7 +228,7 @@ fn execute_shift(
     ir: IROp,
 ) -> Result<u32, String> {
     let a = interpreter.get_vreg(inst_inputs[0])?;
-    let b = inst_inputs[1];
+    let b = interpreter.get_vreg(inst_inputs[1])?;
 
     //  note that in ARM, only the bottom 8 bits of the shift register are used
     let shift_amount: u32 = b & 0xFF;
@@ -263,6 +263,7 @@ fn execute_shift(
 
         // Rotate Right
         IROp::Ror => {
+            println!("shift amount {}  value {}", shift_amount, a);
             let amount = shift_amount % 32;
             if amount == 0 {
                 a

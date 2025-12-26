@@ -107,7 +107,7 @@ pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(
             emit_data_processing(ir_builder, args, IRBuilder::emit_adc);
         }
         Instruction::RSB_rrri { args } => {
-            emit_data_processing(ir_builder, args, IRBuilder::emit_sub);
+            emit_data_processing(ir_builder, args, IRBuilder::emit_rsb);
         }
         Instruction::RSC_rrri { args } => {
             emit_data_processing(ir_builder, args, IRBuilder::emit_rsc);
@@ -157,7 +157,7 @@ pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(
             emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_adc);
         }
         Instruction::RSB_rrrr { args } => {
-            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_sub);
+            emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_rsb);
         }
         Instruction::RSC_rrrr { args } => {
             emit_data_shiftedreg_processing(ir_builder, args, IRBuilder::emit_rsc);
@@ -193,7 +193,9 @@ type DpOperand = fn(&mut IRBuilder, u32, u32, bool) -> u32;
 /// emit ir for instruction rd=rn (operation) (rm+shift +shfit type
 pub fn emit_data_processing(ir_builder: &mut IRBuilder, args: &arg_s_rrr_shi, op: DpOperand) {
     let rm = ir_builder.emit_load_reg(args.rm as u8);
-    let res = rrri_shift(ir_builder, rm, args.shim, args.shty);
+    let imm_value = ir_builder.emit_const(args.shim);
+
+    let res = rrri_shift(ir_builder, rm, imm_value, args.shty);
 
     let rn = ir_builder.emit_load_reg(args.rn as u8);
 
@@ -252,9 +254,11 @@ fn update_flag_dp_shifted_reg(
 type DpImm = fn(&mut IRBuilder, u32, u32, bool) -> u32;
 
 pub fn emit_dp_immediate(ir_builder: &mut IRBuilder, args: &arg_s_rri_rot, op: DpImm) {
-    let imm32 = ror32(args.imm, args.rot * 2);
+    let imm_val = ir_builder.emit_const(args.imm);
+    let rot_vlue = ir_builder.emit_const(args.rot);
 
-    let result = ir_builder.emit_const(imm32);
+    let result = ir_builder.emit_ror(imm_val, rot_vlue);
+
     let rn = ir_builder.emit_load_reg(args.rn as u8);
     let result = op(ir_builder, rn, result, args.s == 1);
     ir_builder.emit_store_reg(args.rd as u8, result);

@@ -47,7 +47,6 @@ impl DecodeContext {
     pub fn get_arm_inst(&mut self, meme: &SimpleMemory) -> Option<ArmInstruction> {
         match meme.read_u32(self.next_pc()) {
             Ok(meme) => {
-                println!("inst ={:32x}", meme);
                 let cond = self.get_condition(meme);
                 let decode_inst = decode_instruction(meme).unwrap();
 
