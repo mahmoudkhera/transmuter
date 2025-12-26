@@ -249,10 +249,10 @@ impl IRBuilder {
         self.emit(IROp::Sbc(s), vec![a, b]).unwrap()
     }
     pub fn emit_rsc(&mut self, a: u32, b: u32, s: bool) -> u32 {
-        self.emit(IROp::Rsc(s), vec![b, a]).unwrap()
+        self.emit(IROp::Rsc(s), vec![a, b]).unwrap()
     }
     pub fn emit_rsb(&mut self, a: u32, b: u32, s: bool) -> u32 {
-        self.emit(IROp::Rsc(s), vec![b, a]).unwrap()
+        self.emit(IROp::Rsc(s), vec![a, b]).unwrap()
     }
 
     pub fn emit_and(&mut self, a: u32, b: u32, s: bool) -> u32 {

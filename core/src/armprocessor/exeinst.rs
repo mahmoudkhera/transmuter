@@ -95,10 +95,13 @@ fn execute_arthimitic(
             (s, res, c, v)
         }
         IROp::Sbc(s) => {
-            let sub = b_u32 + (1 - c_in as u32);
-            let res = a_u32.wrapping_sub(sub);
-            let c = a_u32 >= sub;
-            let v = (((a_u32 ^ sub) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            let borrow = 1 - c_in as u32;
+            let res = a_u32.wrapping_sub(b_u32).wrapping_sub(borrow);
+
+            let full_rn = (a_u32 as u64).wrapping_add(borrow as u64);
+            let c = (b_u32 as u64) >= full_rn;
+
+            let v = ((b_u32 ^ a_u32) & (b_u32 ^ res) & 0x8000_0000) != 0;
             (s, res, c, v)
         }
         IROp::Sub(s) => {
@@ -108,17 +111,20 @@ fn execute_arthimitic(
             (s, res, c, v)
         }
         IROp::Rsb(s) => {
-            let res =1- b_u32.wrapping_sub(a_u32);
+            let res = 1 - b_u32.wrapping_sub(a_u32);
             let c = b_u32 >= a_u32;
             let v = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
             (s, res, c, v)
         }
 
         IROp::Rsc(s) => {
-            let sub = a_u32 + (1 - c_in as u32);
-            let res = b_u32.wrapping_sub(sub);
-            let c = b_u32 >= sub;
-            let v = (((b_u32 ^ sub) & (b_u32 ^ res)) & 0x8000_0000) != 0;
+            let borrow = 1 - c_in as u32;
+            let res = b_u32.wrapping_sub(a_u32).wrapping_sub(borrow);
+
+            let full_rn = (a_u32 as u64).wrapping_add(borrow as u64);
+            let c = (b_u32 as u64) >= full_rn;
+
+            let v = ((b_u32 ^ a_u32) & (b_u32 ^ res) & 0x8000_0000) != 0;
             (s, res, c, v)
         }
 
@@ -129,7 +135,7 @@ fn execute_arthimitic(
         let z = result == 0;
         interpreter.cpu.cpsr.set_nzcv(n, z, carry, overflow);
     }
-    
+
     Ok(result)
 }
 
@@ -222,10 +228,10 @@ fn execute_shift(
     ir: IROp,
 ) -> Result<u32, String> {
     let a = interpreter.get_vreg(inst_inputs[0])?;
-    let b = interpreter.get_vreg(inst_inputs[1])?;
+    let b = inst_inputs[1];
 
-    //  not that in ARM, only the bottom 8 bits of the shift register are used
-    let shift_amount = b & 0xFF;
+    //  note that in ARM, only the bottom 8 bits of the shift register are used
+    let shift_amount: u32 = b & 0xFF;
 
     let result = match ir {
         // Logical Shift Left
