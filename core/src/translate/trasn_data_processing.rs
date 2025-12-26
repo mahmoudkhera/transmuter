@@ -23,7 +23,10 @@ use crate::{
 //
 //
 
-pub fn translate_arg(ir_builder: &mut IRBuilder, inst: &Instruction) -> Result<(), String> {
+pub fn translate_data_processingarg(
+    ir_builder: &mut IRBuilder,
+    inst: &Instruction,
+) -> Result<(), String> {
     println!("ars {:?}", inst);
 
     match inst {
@@ -256,7 +259,6 @@ type DpImm = fn(&mut IRBuilder, u32, u32, bool) -> u32;
 pub fn emit_dp_immediate(ir_builder: &mut IRBuilder, args: &arg_s_rri_rot, op: DpImm) {
     let imm_val = ir_builder.emit_const(args.imm);
     let rot_vlue = ir_builder.emit_const(args.rot);
-
     let result = ir_builder.emit_ror(imm_val, rot_vlue);
 
     let rn = ir_builder.emit_load_reg(args.rn as u8);
@@ -267,19 +269,12 @@ pub fn emit_dp_immediate(ir_builder: &mut IRBuilder, args: &arg_s_rri_rot, op: D
 type DpImmFlag = fn(&mut IRBuilder, u32, u32);
 
 pub fn update_flag_immediate(ir_builder: &mut IRBuilder, args: &arg_s_rri_rot, op: DpImmFlag) {
-    let imm32 = ror32(args.imm, args.rot * 2);
-    let result = ir_builder.emit_const(imm32);
+    let imm_val = ir_builder.emit_const(args.imm);
+    let rot_vlue = ir_builder.emit_const(args.rot);
+    let result = ir_builder.emit_ror(imm_val, rot_vlue);
+
     let rn = ir_builder.emit_load_reg(args.rn as u8);
     op(ir_builder, rn, result);
-}
-
-fn ror32(value: u32, shift: u32) -> u32 {
-    let s = shift & 31; // ARM masks shift to 0–31
-    if s == 0 {
-        value
-    } else {
-        (value >> s) | (value << (32 - s))
-    }
 }
 
 pub fn rrri_shift(ir_builder: &mut IRBuilder, rm: u32, shift_value: u32, shty: u32) -> u32 {

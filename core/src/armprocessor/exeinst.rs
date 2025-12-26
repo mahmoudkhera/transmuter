@@ -163,6 +163,7 @@ fn execute_logical(
 
     if s {
         let n = (result & 0x8000_0000) != 0;
+
         let z = result == 0;
 
         // V is unchanged
@@ -185,8 +186,8 @@ fn execute_compare(
     ir: IROp,
 ) -> Result<u32, String> {
     // Get the operand values
-    let a = interpreter.get_vreg(inst_inputs[0])? as u64;
-    let b = interpreter.get_vreg(inst_inputs[1])? as u64;
+    let a = interpreter.get_vreg(inst_inputs[0])?;
+    let b = interpreter.get_vreg(inst_inputs[1])?;
 
     // Carry and overflow calculation
     let (n, z, c, v) = match ir {
@@ -194,6 +195,8 @@ fn execute_compare(
             // CMP: a - b
             let res = a.wrapping_sub(b);
             let result32 = res as u32;
+
+            println!("a {} b{} res {:x}", a, b, res);
 
             let n = (result32 & 0x8000_0000) != 0;
             let z = result32 == 0;
@@ -204,13 +207,16 @@ fn execute_compare(
         }
         IROp::Cmn => {
             // CMN: a + b
-            let res = a.wrapping_add(b);
+            let res = (a).wrapping_add(b);
             let result32 = res as u32;
+            println!("a {:x} b{} res {:x}", a, b, res);
 
             let n = (result32 & 0x8000_0000) != 0;
             let z = result32 == 0;
-            let c = res > 0xFFFF_FFFF; // carry out
-            let v = ((!(a as u32) ^ b as u32) & (a as u32 ^ result32) & 0x8000_0000) != 0;
+            let c = a as u64 + b as u64 > 0xFFFF_FFFF; // carry out
+            let v = ((!(a ^ b) & (a ^ result32)) & 0x8000_0000) != 0;
+
+            println!("n z {} {}", n, z);
 
             (n, z, c, v)
         }
@@ -263,7 +269,6 @@ fn execute_shift(
 
         // Rotate Right
         IROp::Ror => {
-            println!("shift amount {}  value {}", shift_amount, a);
             let amount = shift_amount % 32;
             if amount == 0 {
                 a

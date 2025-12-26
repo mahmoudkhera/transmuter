@@ -1,7 +1,7 @@
 use crate::{
     armdecoder::ArmInstruction,
     armprocessor::cpu::Condition,
-    translate::{IRBuilder, IRProgram, emitinstruction::translate_arg},
+    translate::{IRBuilder, IRProgram, arg_translate::translate_args},
 };
 
 // Translator
@@ -30,12 +30,12 @@ impl ArmTranslator {
 
                 self.builder.switch_to_block(then_block);
 
-                translate_arg(&mut self.builder, &arm_inst.inst)?;
+                translate_args(&mut self.builder, &arm_inst)?;
                 self.builder.emit_branch(merge_block);
 
                 self.builder.switch_to_block(merge_block);
             } else {
-                translate_arg(&mut self.builder, &arm_inst.inst)?;
+                translate_args(&mut self.builder, &arm_inst)?;
             }
         }
 

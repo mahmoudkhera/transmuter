@@ -8,6 +8,7 @@ use crate::{
 pub struct ArmInstruction {
     pub cond: Condition,
     pub inst: Instruction,
+    pub inst_binary: u32,
 }
 
 // Main Decode Context
@@ -53,6 +54,7 @@ impl DecodeContext {
                 Some(ArmInstruction {
                     cond: cond,
                     inst: decode_inst,
+                    inst_binary: meme,
                 })
             }
 
