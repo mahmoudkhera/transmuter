@@ -23,7 +23,7 @@ mod ands_specific_test {
         0xA7, 0x50, 0x16, 0xE0,
     ];
 
-    fn run_interpreter(program: &[u8], init_regs: Vec<(usize, u32)>) -> IRInterpreter {
+    fn run_interpreter(program: &[u8], init_regs: Vec<(usize, u32)>, carry: bool) -> IRInterpreter {
         let mut memory = SimpleMemory::new(program.len());
         memory.load_program(0, program);
 
@@ -43,6 +43,7 @@ mod ands_specific_test {
         for (idx, val) in init_regs {
             inter.cpu.write_reg(idx as u8, val);
         }
+        inter.cpu.cpsr.set_nzcv(false, false, carry, false);
 
         inter.excute(&ir_program).unwrap();
         inter
@@ -59,7 +60,7 @@ mod ands_specific_test {
             (7, 0x00000001), // For Case 3: Will be shifted to 1
         ];
 
-        let inter = run_interpreter(ANDS_PROGRAM, init);
+        let inter = run_interpreter(ANDS_PROGRAM, init, false);
 
         let (_, z, _, _) = inter.cpu.cpsr.get_nzcv();
         assert_eq!(inter.cpu.read_reg(0), 0x80000000);
@@ -89,7 +90,7 @@ mod ands_specific_test {
             (10, 0xAAAA), // R10: For Self-EOR
         ];
 
-        let inter = run_interpreter(LOGICAL_PROGRAM, init);
+        let inter = run_interpreter(LOGICAL_PROGRAM, init, false);
 
         let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
         // 1. ANDS - Result is 0x80000000. Should set N flag.
@@ -131,7 +132,7 @@ mod ands_specific_test {
         ];
 
         // Start with Carry = 1 (No Borrow)
-        let inter = run_interpreter(ARITH_PROGRAM, init);
+        let inter = run_interpreter(ARITH_PROGRAM, init, false);
         let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
 
         // --- ADDS (Immediate) ---
@@ -168,7 +169,7 @@ mod ands_specific_test {
         0x08, 0x00, 0x37, 0xE1, // TEQ R7, R8          (Reg)
         // --- CMP (Compare: SUB logic) ---
         0x0A, 0x00, 0x59, 0xE3, // CMP R9, #10         (Imm)
-        0x0b, 0x00, 0x7c, 0xe1,// CMP R12,R11
+        0x0b, 0x00, 0x7c, 0xe1, // CMP R12,R11
     ];
 
     #[test]
@@ -176,7 +177,7 @@ mod ands_specific_test {
         let init = vec![
             (1, 0x80000000), // R1: Has MSB set
         ];
-        let inter = run_interpreter(&COMP_PROGRAM[0..4], init);
+        let inter = run_interpreter(&COMP_PROGRAM[0..4], init, false);
 
         let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
 
@@ -192,7 +193,7 @@ mod ands_specific_test {
             (7, 0x55555555),
             (8, 0x55555555),
         ];
-        let inter = run_interpreter(&COMP_PROGRAM[4..8], init);
+        let inter = run_interpreter(&COMP_PROGRAM[4..8], init, false);
 
         let (_, z, _, _) = inter.cpu.cpsr.get_nzcv();
         assert!(z, "TEQ Imm failed to set Z flag");
@@ -201,7 +202,7 @@ mod ands_specific_test {
     fn test_cmp_instructions() {
         let init = vec![(9, 0x1)];
 
-        let inter = run_interpreter(&COMP_PROGRAM[8..12], init);
+        let inter = run_interpreter(&COMP_PROGRAM[8..12], init, false);
 
         let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
         assert!(n, " CMP Imm failed to set v flag");
@@ -209,12 +210,63 @@ mod ands_specific_test {
     #[test]
 
     fn test_cmn_instructions() {
-        let init = vec![(12, 0x7FFFFFFF),(11, 0x1)];
+        let init = vec![(12, 0x7FFFFFFF), (11, 0x1)];
 
-        let inter = run_interpreter(&COMP_PROGRAM[12..16], init);
+        let inter = run_interpreter(&COMP_PROGRAM[12..16], init, false);
 
         let (n, _, _, v) = inter.cpu.cpsr.get_nzcv();
         assert!(n, " CMN Imm failed to set v flag");
         assert!(v, " CMN Imm failed to set v flag");
+    }
+    const ARTHIMETIC: &[u8] = &[
+        0x02, 0x30, 0x91, 0xe0, // ADDS r3,r1,r2
+        0x02, 0x40, 0xb3, 0xe0, //  ADCs r4,r3,r2
+        0x03, 0x50, 0xd4, 0xe0, // SBCS r5,r4,r3
+        0x04, 0x60, 0x55, 0xe0, //SUB r6,r5,r4  note that rsb and rsc are just the same
+    ];
+
+    #[test]
+    fn test_adds_instructions() {
+        let init = vec![(1, 0x7FFFFFFF), (2, 0x1)];
+
+        let inter = run_interpreter(&ARTHIMETIC[0..4], init, false);
+
+        let (n, _, _, v) = inter.cpu.cpsr.get_nzcv();
+        assert!(n, "n must be set ");
+        assert!(v, " CMN Imm failed to set v flag");
+    }
+
+    #[test]
+    fn test_adcs_instructions() {
+        let init = vec![(3, 0x80000000), (2, 0x80000000)];
+
+        let inter = run_interpreter(&ARTHIMETIC[4..8], init, true);
+
+        // assert_eq!(inter.cpu.read_reg(4), 0x1);
+
+        let (_, _, c, v) = inter.cpu.cpsr.get_nzcv();
+        assert!(c, "  c must be set");
+        assert!(v, "  v must be set");
+    }
+    #[test]
+    fn test_subcs_instructions() {
+        let init = vec![(4, 0), (3, 0x80000000)];
+
+        let inter = run_interpreter(&ARTHIMETIC[8..12], init, false);
+
+        let (_, _, _, v) = inter.cpu.cpsr.get_nzcv();
+        assert!(v, "  v must be set");
+    }
+    #[test]
+    fn test_subs_instructions() {
+        let init = vec![(4, 0x1), (5, 0x0)];
+
+        let inter = run_interpreter(&ARTHIMETIC[12..16], init, true);
+
+        assert_eq!(inter.cpu.read_reg(6), 0xFFFFFFFF);
+
+        let (n, _, c, _) = inter.cpu.cpsr.get_nzcv();
+        assert!(n, "  n must be set");
+        assert!(!c, "  c must  reset");
     }
 }

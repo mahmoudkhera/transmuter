@@ -77,54 +77,69 @@ fn execute_arthimitic(
 
     let a = a_u32 as u64;
     let b = b_u32 as u64;
-    let c_in = interpreter.cpu.cpsr.c as u64;
+    let c_in = if interpreter.cpu.cpsr.c { 1u64 } else { 0u64 };
 
     let (s, result, carry, overflow) = match ir {
+        // ADD: Rd = Rn + Operand2
         IROp::Add(s) => {
             let wide = a + b;
             let res = wide as u32;
             let c = wide > 0xFFFF_FFFF;
             let v = ((!(a_u32 ^ b_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+
             (s, res, c, v)
         }
+        // ADC: Rd = Rn + Operand2 + Carry
         IROp::Adc(s) => {
-            let wide = a + b + c_in;
+            let wide: u64 = a + b + c_in;
             let res = wide as u32;
             let c = wide > 0xFFFF_FFFF;
-            let v = ((!(a_u32 ^ (b_u32 + c_in as u32)) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            let b_eff = b_u32.wrapping_add(c_in as u32);
+            let v = ((!(a_u32 ^ b_eff) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+                        println!(" c {} v {} ",c,v);
+
             (s, res, c, v)
         }
-        IROp::Sbc(s) => {
-            let borrow = 1 - c_in as u32;
-            let res = a_u32.wrapping_sub(b_u32).wrapping_sub(borrow);
-
-            let full_rn = (a_u32 as u64).wrapping_add(borrow as u64);
-            let c = (b_u32 as u64) >= full_rn;
-
-            let v = ((b_u32 ^ a_u32) & (b_u32 ^ res) & 0x8000_0000) != 0;
-            (s, res, c, v)
-        }
+        // SUB: Rd = Rn - Operand2
         IROp::Sub(s) => {
             let res = a_u32.wrapping_sub(b_u32);
-            let c = a_u32 >= b_u32; // NOT borrow
-            let v = (((a_u32 ^ b_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+
+            let c = a_u32 >= b_u32;
+
+            let v: bool = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
+
             (s, res, c, v)
         }
+        // SBC: Rd = Rn - Operand2 - !Carry
+        IROp::Sbc(s) => {
+            let borrow = if c_in == 1 { 0u32 } else { 1u32 };
+
+            let res = a_u32.wrapping_sub(b_u32).wrapping_sub(borrow);
+
+            let wide_sub = (b_u32 as u64).wrapping_add(borrow as u64);
+            let c = (a_u32 as u64) >= wide_sub;
+
+            let v: bool = (((a_u32 ^ b_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
+            (s, res, c, v)
+        }
+
+        // RSB: Rd = Operand2 - Rn
         IROp::Rsb(s) => {
             let res = b_u32.wrapping_sub(a_u32);
             let c = b_u32 >= a_u32;
+
             let v = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
             (s, res, c, v)
         }
-
+        // RSC: Rd = Rm - Rn - !Carry
         IROp::Rsc(s) => {
-            let borrow = 1 - c_in as u32;
+            let borrow = if c_in == 1 { 0u32 } else { 1u32 };
             let res = b_u32.wrapping_sub(a_u32).wrapping_sub(borrow);
 
-            let full_rn = (a_u32 as u64).wrapping_add(borrow as u64);
-            let c = (b_u32 as u64) >= full_rn;
+            let wide_res = (a_u32 as u64).wrapping_add(borrow as u64);
+            let c = (b_u32 as u64) >= wide_res;
 
-            let v = ((b_u32 ^ a_u32) & (b_u32 ^ res) & 0x8000_0000) != 0;
+            let v = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
             (s, res, c, v)
         }
 
