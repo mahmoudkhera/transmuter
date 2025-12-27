@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use crate::armprocessor::cpu::Condition;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
 pub enum IROp {
@@ -16,8 +15,6 @@ pub enum IROp {
     Sbc(bool),
     Rsb(bool),
     Rsc(bool),
-    Mul(bool),
-    Neg(bool),
 
     // Logical
     Mov(bool),
@@ -39,6 +36,16 @@ pub enum IROp {
     // Comparison and Flags
     Cmp,
     Cmn,
+
+    // Multiply and multiply accumulate
+    Mul(bool),
+    Mla(bool),
+    Umaal(bool),
+    Mls(bool),
+    Umull(bool),
+    Umlal(bool),
+    Smull(bool),
+    Smlal(bool),
 
     SetFlag(Flag),
     GetFlag(Flag),
@@ -71,8 +78,6 @@ impl IROp {
             IROp::Sbc(_) => "Sbc",
             IROp::Rsb(_) => "Rsb",
             IROp::Rsc(_) => "Rsc",
-            IROp::Mul(_) => "Mul",
-            IROp::Neg(_) => "Neg",
             IROp::Cmp => "Cmp",
             IROp::Cmn => "Cmn",
 
@@ -92,6 +97,16 @@ impl IROp {
             IROp::Asr => "Asr",
             IROp::Lsl => "Lsl",
             IROp::Ror => "Ror",
+
+            // Multiply and multiply accumulate
+            IROp::Mul(_) => "MUL",
+            IROp::Mla(_) => "MLA",
+            IROp::Umaal(_) => "UMAAL",
+            IROp::Mls(_) => "MLS",
+            IROp::Umull(_) => "UMULL",
+            IROp::Umlal(_) => "UMLAL",
+            IROp::Smull(_) => "SMULL",
+            IROp::Smlal(_) => "SMLAL",
 
             // Comparison and Flags
             IROp::SetFlag(_) => "SetFlag",
@@ -223,6 +238,35 @@ impl IRBuilder {
         output
     }
 
+    // sepcial emit functions
+
+    pub fn emit_branch(&mut self, target: usize) {
+        self.emit(IROp::Branch(target), vec![]);
+        self.blocks
+            .get_mut(&self.current_block)
+            .unwrap()
+            .successors
+            .push(target);
+    }
+
+    pub fn emit_branch_cond(&mut self, cond: u32, target: usize, fallthrough: usize) {
+        self.emit(IROp::BranchCond(target), vec![cond]);
+        let block = self.blocks.get_mut(&self.current_block).unwrap();
+        block.successors.push(target);
+        block.successors.push(fallthrough);
+    }
+
+    pub fn emit_eval_condition(&mut self, cond: Condition) -> u32 {
+        self.emit(IROp::EvalCondition(cond), vec![]).unwrap()
+    }
+
+    pub fn finalize(self) -> IRProgram {
+        IRProgram {
+            blocks: self.blocks,
+            entry: 0,
+        }
+    }
+
     pub fn emit_const(&mut self, value: u32) -> u32 {
         self.emit(IROp::Const(value), vec![]).unwrap()
     }
@@ -235,6 +279,7 @@ impl IRBuilder {
         self.emit(IROp::StoreReg(reg), vec![value]);
     }
 
+    // # Data-processing
     pub fn emit_add(&mut self, a: u32, b: u32, s: bool) -> u32 {
         self.emit(IROp::Add(s), vec![a, b]).unwrap()
     }
@@ -301,30 +346,9 @@ impl IRBuilder {
         self.emit(IROp::Ror, vec![a, b]).unwrap()
     }
 
-    pub fn emit_branch(&mut self, target: usize) {
-        self.emit(IROp::Branch(target), vec![]);
-        self.blocks
-            .get_mut(&self.current_block)
-            .unwrap()
-            .successors
-            .push(target);
-    }
+    //# Multiply and multiply accumulate
 
-    pub fn emit_branch_cond(&mut self, cond: u32, target: usize, fallthrough: usize) {
-        self.emit(IROp::BranchCond(target), vec![cond]);
-        let block = self.blocks.get_mut(&self.current_block).unwrap();
-        block.successors.push(target);
-        block.successors.push(fallthrough);
-    }
-
-    pub fn emit_eval_condition(&mut self, cond: Condition) -> u32 {
-        self.emit(IROp::EvalCondition(cond), vec![]).unwrap()
-    }
-
-    pub fn finalize(self) -> IRProgram {
-        IRProgram {
-            blocks: self.blocks,
-            entry: 0,
-        }
+    pub fn emit_mul(&mut self, rn: u32, rm: u32, s: bool) -> u32 {
+        self.emit(IROp::Mul(s), vec![rn, rm]).unwrap()
     }
 }

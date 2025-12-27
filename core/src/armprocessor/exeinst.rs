@@ -62,6 +62,8 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::Asr => execute_shift(interpreter, &inst.inputs, IROp::Asr),
         IROp::Ror => execute_shift(interpreter, &inst.inputs, IROp::Ror),
         IROp::Branch(_) | IROp::Call(_) | IROp::Return | IROp::Nop => Ok(0),
+        //# Multiply and multiply accumulate
+        IROp::Mul(s) => execite_mul(interpreter, &inst.inputs, IROp::Mul(s)),
 
         _ => Err(format!("not implemented or can not be excuted")),
     }
@@ -96,7 +98,7 @@ fn execute_arthimitic(
             let c = wide > 0xFFFF_FFFF;
             let b_eff = b_u32.wrapping_add(c_in as u32);
             let v = ((!(a_u32 ^ b_eff) & (a_u32 ^ res)) & 0x8000_0000) != 0;
-                        println!(" c {} v {} ",c,v);
+            println!(" c {} v {} ", c, v);
 
             (s, res, c, v)
         }
@@ -295,4 +297,28 @@ fn execute_shift(
     };
 
     Ok(result)
+}
+
+fn execite_mul(
+    interpreter: &mut IRInterpreter,
+    inst_inputs: &Vec<u32>,
+    ir: IROp,
+) -> Result<u32, String> {
+    let rn = interpreter.get_vreg(inst_inputs[0])?;
+    let rm = interpreter.get_vreg(inst_inputs[1])?;
+
+    match ir {
+        IROp::Mul(s) => {
+            let result = rn.wrapping_mul(rm);
+            if s {
+                interpreter.cpu.cpsr.n = (result as i32) < 0;
+                interpreter.cpu.cpsr.z = result == 0;
+                // C is UNPREDICTABLE, V is unchanged
+            }
+            Ok(result)
+        }
+        
+
+        _ => return Err("not a mul or saturation instruction".to_string()),
+    }
 }

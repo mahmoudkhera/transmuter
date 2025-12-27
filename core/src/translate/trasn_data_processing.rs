@@ -23,12 +23,7 @@ use crate::{
 //
 //
 
-pub fn translate_data_processingarg(
-    ir_builder: &mut IRBuilder,
-    inst: &Instruction,
-) -> Result<(), String> {
-    println!("ars {:?}", inst);
-
+pub fn translate_data_processingarg(ir_builder: &mut IRBuilder, inst: &Instruction) {
     match inst {
         // ---------- Data-processing (immediate)----------//
         Instruction::AND_rri { args } => {
@@ -184,10 +179,8 @@ pub fn translate_data_processingarg(
             update_flag_dp_shifted_reg(ir_builder, args, IRBuilder::emit_cmn);
         }
 
-        _ => println!("Unkown instruction"),
+        _ => return,
     }
-
-    Ok(())
 }
 
 //# Data-processing (register)

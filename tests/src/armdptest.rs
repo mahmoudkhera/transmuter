@@ -269,4 +269,15 @@ mod ands_specific_test {
         assert!(n, "  n must be set");
         assert!(!c, "  c must  reset");
     }
+
+    const MUL: &[u8] = &[0x92, 0x01, 0x12, 0xe0];
+    #[test]
+    fn test_muls_instructions() {
+        let init = vec![(1, 0x8000_0000), (2, 0x1)];
+        let inter = run_interpreter(&MUL, init, false);
+        
+        assert_eq!(inter.cpu.read_reg(2), 0x8000_0000);
+        let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
+        assert!(n, "  n must be set");
+    }
 }
