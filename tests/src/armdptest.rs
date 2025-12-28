@@ -252,7 +252,7 @@ mod ands_specific_test {
     fn test_subcs_instructions() {
         let init = vec![(4, 0), (3, 0x80000000)];
 
-        let inter = run_interpreter(&ARTHIMETIC[8..12], init, false);
+        let inter = run_interpreter(&ARTHIMETIC[8..12], init, true);
 
         let (_, _, _, v) = inter.cpu.cpsr.get_nzcv();
         assert!(v, "  v must be set");
@@ -275,9 +275,36 @@ mod ands_specific_test {
     fn test_muls_instructions() {
         let init = vec![(1, 0x8000_0000), (2, 0x1)];
         let inter = run_interpreter(&MUL, init, false);
-        
+
         assert_eq!(inter.cpu.read_reg(2), 0x8000_0000);
         let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
         assert!(n, "  n must be set");
+    }
+
+    const MLS: &[u8] = &[0x93, 0x12, 0x63, 0xe0];
+    #[test]
+    fn test_mls_instructions() {
+        let init = vec![(1, 25 * 25), (2, 25), (3, 25)];
+        let inter = run_interpreter(&MLS, init, false);
+
+        assert_eq!(inter.cpu.read_reg(3), 0);
+    }
+    const MLA: &[u8] = &[0x93, 0x12, 0x23, 0xe0];
+    #[test]
+    fn test_mla_instructions() {
+        let init = vec![(1, 25 * 25), (2, 25), (3, 25)];
+        let inter = run_interpreter(&MLA, init, false);
+
+        assert_eq!(inter.cpu.read_reg(3), 0x4e2);
+    }
+
+    const UMULL: &[u8] = &[0x92, 0x03, 0x81, 0xe0];
+    #[test]
+    fn test_umull_instructions() {
+        let init = vec![(2, 0xFFFF_FFFF), (3, 0xF)];
+        let inter = run_interpreter(&UMULL, init, false);
+
+        assert_eq!(inter.cpu.read_reg(0), 0xfffffff1);
+        assert_eq!(inter.cpu.read_reg(1), 0xe);
     }
 }

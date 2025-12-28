@@ -7,7 +7,7 @@ use crate::{
 
 pub struct IRInterpreter {
     pub cpu: CPUState,
-    pub vregs: HashMap<u32, u32>, // Virtual register values
+    pub vregs: HashMap<u32, u64>, // Virtual register values
 }
 
 impl IRInterpreter {
@@ -99,7 +99,7 @@ impl IRInterpreter {
         }
     }
 
-    pub fn get_vreg(&self, vreg: u32) -> Result<u32, String> {
+    pub fn get_vreg(&self, vreg: u32) -> Result<u64, String> {
         self.vregs
             .get(&vreg)
             .copied()

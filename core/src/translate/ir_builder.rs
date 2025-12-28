@@ -7,6 +7,7 @@ pub enum IROp {
     Const(u32),
     LoadReg(u8),
     StoreReg(u8),
+    Store2Regs(u8, u8),
 
     // Arithmetic
     Add(bool),
@@ -41,7 +42,7 @@ pub enum IROp {
     Mul(bool),
     Mla(bool),
     Umaal(bool),
-    Mls(bool),
+    Mls,
     Umull(bool),
     Umlal(bool),
     Smull(bool),
@@ -70,6 +71,7 @@ impl IROp {
             IROp::Const(_) => "Const",
             IROp::LoadReg(_) => "LoadReg",
             IROp::StoreReg(_) => "StoreReg",
+            IROp::Store2Regs(_, _) => "Store2Regs",
 
             // Arithmetic
             IROp::Add(_) => "Add",
@@ -102,7 +104,7 @@ impl IROp {
             IROp::Mul(_) => "MUL",
             IROp::Mla(_) => "MLA",
             IROp::Umaal(_) => "UMAAL",
-            IROp::Mls(_) => "MLS",
+            IROp::Mls => "MLS",
             IROp::Umull(_) => "UMULL",
             IROp::Umlal(_) => "UMLAL",
             IROp::Smull(_) => "SMULL",
@@ -278,6 +280,9 @@ impl IRBuilder {
     pub fn emit_store_reg(&mut self, reg: u8, value: u32) {
         self.emit(IROp::StoreReg(reg), vec![value]);
     }
+    pub fn emit_store_2regs(&mut self, reglow: u8, reghigh: u8, value: u32) {
+        self.emit(IROp::Store2Regs(reglow, reghigh), vec![value]);
+    }
 
     // # Data-processing
     pub fn emit_add(&mut self, a: u32, b: u32, s: bool) -> u32 {
@@ -350,5 +355,14 @@ impl IRBuilder {
 
     pub fn emit_mul(&mut self, rn: u32, rm: u32, s: bool) -> u32 {
         self.emit(IROp::Mul(s), vec![rn, rm]).unwrap()
+    }
+    pub fn emit_mla(&mut self, rn: u32, rm: u32, s: bool) -> u32 {
+        self.emit(IROp::Mla(s), vec![rn, rm]).unwrap()
+    }
+    pub fn emit_mls(&mut self, rn: u32, rm: u32) -> u32 {
+        self.emit(IROp::Mls, vec![rn, rm]).unwrap()
+    }
+    pub fn emit_umull(&mut self, rn: u32, rm: u32, s: bool) -> u32 {
+        self.emit(IROp::Umull(s), vec![rn, rm]).unwrap()
     }
 }

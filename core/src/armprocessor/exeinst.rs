@@ -3,20 +3,34 @@ use crate::{
     translate::{IRInst, IROp},
 };
 
-pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Result<u32, String> {
+pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Result<u64, String> {
     match inst.op {
-        IROp::Const(val) => Ok(val),
+        IROp::Const(val) => Ok(val as u64),
         IROp::LoadReg(reg) => {
             let val = interpreter.cpu.read_reg(reg);
 
-            Ok(val)
+            Ok(val as u64)
         }
         IROp::StoreReg(reg) => {
             let val = interpreter.get_vreg(inst.inputs[0])?;
-            interpreter.cpu.write_reg(reg, val);
+            interpreter.cpu.write_reg(reg, val as u32);
             println!("reg{}  = 0x{:x}", reg, val);
 
-            Ok(inst.inputs[0])
+            Ok(0)
+        }
+        IROp::Store2Regs(low, high) => {
+            let val = interpreter.get_vreg(inst.inputs[0])?;
+            let rdlo_value = val as u32; // Low 32 bits
+            let rdhi_value = (val >> 32) as u32; // High 32 bits
+            println!(
+                "reg{}  = 0x{:x} reg{}  = 0x{:x}",
+                low, rdlo_value, high, rdhi_value
+            );
+
+            interpreter.cpu.write_reg(low, rdlo_value);
+            interpreter.cpu.write_reg(high, rdhi_value);
+
+            Ok(0)
         }
         IROp::And(s) => execute_logical(interpreter, &inst.inputs, IROp::And(s)),
         IROp::Orr(s) => execute_logical(interpreter, &inst.inputs, IROp::Orr(s)),
@@ -51,7 +65,7 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
 
         IROp::EvalCondition(cond) => {
             let result = interpreter.cpu.cpsr.evaluat_cond(cond);
-            Ok(result as u32)
+            Ok(result as u64)
         }
         IROp::BranchCond(_) => {
             let cond = interpreter.get_vreg(inst.inputs[0])?;
@@ -64,6 +78,9 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::Branch(_) | IROp::Call(_) | IROp::Return | IROp::Nop => Ok(0),
         //# Multiply and multiply accumulate
         IROp::Mul(s) => execite_mul(interpreter, &inst.inputs, IROp::Mul(s)),
+        IROp::Mls => execite_mul(interpreter, &inst.inputs, IROp::Mls),
+        IROp::Mla(s) => execite_mul(interpreter, &inst.inputs, IROp::Mla(s)),
+        IROp::Umull(s) => execite_mul(interpreter, &inst.inputs, IROp::Umull(s)),
 
         _ => Err(format!("not implemented or can not be excuted")),
     }
@@ -73,19 +90,19 @@ fn execute_arthimitic(
     interpreter: &mut IRInterpreter,
     inst_inputs: &Vec<u32>,
     ir: IROp,
-) -> Result<u32, String> {
-    let a_u32 = interpreter.get_vreg(inst_inputs[0])?;
-    let b_u32 = interpreter.get_vreg(inst_inputs[1])?;
+) -> Result<u64, String> {
+    let a = interpreter.get_vreg(inst_inputs[0])?;
+    let b = interpreter.get_vreg(inst_inputs[1])?;
 
-    let a = a_u32 as u64;
-    let b = b_u32 as u64;
+    let a_u32 = a as u32;
+    let b_u32 = b as u32;
     let c_in = if interpreter.cpu.cpsr.c { 1u64 } else { 0u64 };
 
     let (s, result, carry, overflow) = match ir {
         // ADD: Rd = Rn + Operand2
         IROp::Add(s) => {
             let wide = a + b;
-            let res = wide as u32;
+            let res: u32 = wide as u32;
             let c = wide > 0xFFFF_FFFF;
             let v = ((!(a_u32 ^ b_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
 
@@ -108,7 +125,7 @@ fn execute_arthimitic(
 
             let c = a_u32 >= b_u32;
 
-            let v: bool = (((b_u32 ^ a_u32) & (b_u32 ^ res)) & 0x8000_0000) != 0;
+            let v: bool = (((a_u32 ^ a_u32) & (a_u32 ^ res)) & 0x8000_0000) != 0;
 
             (s, res, c, v)
         }
@@ -153,16 +170,16 @@ fn execute_arthimitic(
         interpreter.cpu.cpsr.set_nzcv(n, z, carry, overflow);
     }
 
-    Ok(result)
+    Ok(result as u64)
 }
 
 fn execute_logical(
     interpreter: &mut IRInterpreter,
     inst_inputs: &Vec<u32>,
     ir: IROp,
-) -> Result<u32, String> {
-    let a = interpreter.get_vreg(inst_inputs[0])?;
-    let b = interpreter.get_vreg(inst_inputs[1])?;
+) -> Result<u64, String> {
+    let a = interpreter.get_vreg(inst_inputs[0])? as u32;
+    let b = interpreter.get_vreg(inst_inputs[1])? as u32;
 
     // Carry comes from shifter, NOT from logic
     let carry = interpreter.cpu.cpsr.c;
@@ -191,7 +208,7 @@ fn execute_logical(
     }
 
     if write_result {
-        Ok(result)
+        Ok(result as u64)
     } else {
         Ok(0) // TST / TEQ do not write back
     }
@@ -201,10 +218,10 @@ fn execute_compare(
     interpreter: &mut IRInterpreter,
     inst_inputs: &Vec<u32>,
     ir: IROp,
-) -> Result<u32, String> {
+) -> Result<u64, String> {
     // Get the operand values
-    let a = interpreter.get_vreg(inst_inputs[0])?;
-    let b = interpreter.get_vreg(inst_inputs[1])?;
+    let a = interpreter.get_vreg(inst_inputs[0])? as u32;
+    let b = interpreter.get_vreg(inst_inputs[1])? as u32;
 
     // Carry and overflow calculation
     let (n, z, c, v) = match ir {
@@ -249,9 +266,9 @@ fn execute_shift(
     interpreter: &mut IRInterpreter,
     inst_inputs: &Vec<u32>,
     ir: IROp,
-) -> Result<u32, String> {
-    let a = interpreter.get_vreg(inst_inputs[0])?;
-    let b = interpreter.get_vreg(inst_inputs[1])?;
+) -> Result<u64, String> {
+    let a = interpreter.get_vreg(inst_inputs[0])? as u32;
+    let b = interpreter.get_vreg(inst_inputs[1])? as u32;
 
     //  note that in ARM, only the bottom 8 bits of the shift register are used
     let shift_amount: u32 = b & 0xFF;
@@ -296,28 +313,45 @@ fn execute_shift(
         _ => return Err("not a shift instruction".to_string()),
     };
 
-    Ok(result)
+    Ok(result as u64)
 }
 
 fn execite_mul(
     interpreter: &mut IRInterpreter,
     inst_inputs: &Vec<u32>,
     ir: IROp,
-) -> Result<u32, String> {
+) -> Result<u64, String> {
     let rn = interpreter.get_vreg(inst_inputs[0])?;
     let rm = interpreter.get_vreg(inst_inputs[1])?;
 
     match ir {
         IROp::Mul(s) => {
-            let result = rn.wrapping_mul(rm);
+            let result = (rn as u32).wrapping_mul(rm as u32);
             if s {
                 interpreter.cpu.cpsr.n = (result as i32) < 0;
                 interpreter.cpu.cpsr.z = result == 0;
                 // C is UNPREDICTABLE, V is unchanged
             }
+            Ok(result as u64)
+        }
+        IROp::Mla(_) | IROp::Mls => {
+            let result = (rn as u32).wrapping_mul(rm as u32);
+
+            Ok(result as u64)
+        }
+        IROp::Umull(s) => {
+            let result = (rn).wrapping_mul(rm);
+
+            if s {
+                // N = RdHi[31]
+                interpreter.cpu.cpsr.n = result & 0x8000_0000 == 1;
+
+                interpreter.cpu.cpsr.z = result == 0;
+                // C, V are UNPREDICTABLE
+            }
+
             Ok(result)
         }
-        
 
         _ => return Err("not a mul or saturation instruction".to_string()),
     }
