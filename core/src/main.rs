@@ -4,7 +4,7 @@ use core::{
 };
 
 fn main() {
-    const COMP_PROGRAM: &[u8] = &[0x92, 0x03, 0x81, 0xe0];
+    const COMP_PROGRAM: &[u8] = &[0x92, 0x03, 0xd1, 0xe0];
     let mut memory = SimpleMemory::new(COMP_PROGRAM.len());
 
     memory.load_program(0, &COMP_PROGRAM);
@@ -31,9 +31,9 @@ fn main() {
     inter.cpu.cpsr.set_nzcv(false, false, false, false);
 
     inter.cpu.write_reg(0, 0);
-    inter.cpu.write_reg(1, 0);
-    inter.cpu.write_reg(2, 0xFFFF_FFFF);
-    inter.cpu.write_reg(3, 0xF);
+    inter.cpu.write_reg(1, 100);
+    inter.cpu.write_reg(2, (-10i32) as u32);
+    inter.cpu.write_reg(3, -5i32 as u32);
 
     inter.excute(&ir_program).unwrap();
 }

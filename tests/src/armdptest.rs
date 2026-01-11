@@ -307,4 +307,50 @@ mod ands_specific_test {
         assert_eq!(inter.cpu.read_reg(0), 0xfffffff1);
         assert_eq!(inter.cpu.read_reg(1), 0xe);
     }
+
+    const UMLAL: &[u8] = &[0x92, 0x03, 0xa1, 0xe0];
+    #[test]
+    fn test_umlal_instructions() {
+        let init = vec![(0, 0), (1, 100), (2, 10), (3, 20)];
+        let inter = run_interpreter(&UMLAL, init, false);
+
+        // Expected: (10 × 20) + 100 = 200 + 100 = 300
+        assert_eq!(inter.cpu.read_reg(0), 0);
+        assert_eq!(inter.cpu.read_reg(1), 300);
+    }
+
+    const SMULL: &[u8] = &[0x92, 0x03, 0xd1, 0xe0];
+
+    #[test]
+    fn test_smull_negative() {
+        let init = vec![(2, 0xFFFFFFF6), (3, 20)];
+
+        let inter = run_interpreter(&SMULL, init, false);
+
+        // Expected: -10 × 20 = -200
+        // In 64-bit two's complement: 0xFFFFFFFF_FFFFFF38
+        assert_eq!(inter.cpu.read_reg(0), 0xFFFF_FFFF); // RdLo
+        assert_eq!(inter.cpu.read_reg(1), 0xFFFF_FF38); // RdHi (sign extension)
+
+        // Flags: negative result
+        let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
+
+        assert_eq!(n, true); // Negative!
+    }
+
+    #[test]
+    fn test_smull_both_negative() {
+        let init = vec![(2, (-10i32) as u32), (3, (-5i32) as u32)];
+
+        let inter = run_interpreter(&SMULL, init, false);
+
+        // Expected: -5 × -10 = 50 (positive)
+        assert_eq!(inter.cpu.read_reg(0), 0);
+        assert_eq!(inter.cpu.read_reg(1), 50);
+
+        // Flags: negative result
+        let (n, _, _, _) = inter.cpu.cpsr.get_nzcv();
+
+        assert_eq!(n, false); // Negative!
+    }
 }

@@ -81,6 +81,8 @@ pub fn execute_instruction(inst: &IRInst, interpreter: &mut IRInterpreter) -> Re
         IROp::Mls => execite_mul(interpreter, &inst.inputs, IROp::Mls),
         IROp::Mla(s) => execite_mul(interpreter, &inst.inputs, IROp::Mla(s)),
         IROp::Umull(s) => execite_mul(interpreter, &inst.inputs, IROp::Umull(s)),
+        IROp::Umlal(s) => execite_mul(interpreter, &inst.inputs, IROp::Umlal(s)),
+        IROp::Smull(s) => execite_mul(interpreter, &inst.inputs, IROp::Smull(s)),
 
         _ => Err(format!("not implemented or can not be excuted")),
     }
@@ -349,6 +351,74 @@ fn execite_mul(
                 interpreter.cpu.cpsr.z = result == 0;
                 // C, V are UNPREDICTABLE
             }
+
+            Ok(result)
+        }
+        IROp::Umlal(s) => {
+            let mul = (rn).wrapping_mul(rm);
+
+            // Get current accumulator value from rd:ra
+            let rdlo_current = interpreter.get_vreg(inst_inputs[2])?;
+            let rdhi_current = interpreter.get_vreg(inst_inputs[3])?;
+            let accumulator = ((rdhi_current as u64) << 32) | (rdlo_current as u64);
+
+            // Add to accumulator
+
+            let result = accumulator.wrapping_add(mul);
+
+            if s {
+                // N = RdHi[31]
+                interpreter.cpu.cpsr.n = result & 0x8000_0000 == 1;
+
+                interpreter.cpu.cpsr.z = result == 0;
+                // C, V are UNPREDICTABLE
+            }
+            Ok(result)
+        }
+        IROp::Smull(s) => {
+            let result = ((rn as u32) as i32 as i64) * ((rm as u32) as i32 as i64);
+
+            if s {
+                // N = RdHi[31]
+                interpreter.cpu.cpsr.n = result < 0;
+
+                interpreter.cpu.cpsr.z = result == 0;
+                // C, V are UNPREDICTABLE
+            }
+
+            Ok(result as u64)
+        }
+        IROp::Smlal(s) => {
+            // Get current accumulator value from rd:ra
+            let rdlo_current = interpreter.get_vreg(inst_inputs[2])?;
+            let rdhi_current = interpreter.get_vreg(inst_inputs[3])?;
+            let accumulator = ((rdhi_current as u64) << 32) | (rdlo_current as u64);
+
+            let accumulator = accumulator as i64;
+
+            let mul = (rn as i64) * (rm as i64);
+
+            let result = accumulator.wrapping_add(mul);
+
+            // Update flags if S=1
+            if s {
+                interpreter.cpu.cpsr.n = result < 0;
+                interpreter.cpu.cpsr.z = result == 0;
+                // C and V are UNPREDICTABLE
+            }
+
+            Ok(result as u64)
+        }
+        IROp::Umaal => {
+            // Get current accumulator value from rd:ra
+            let rdlo_current = interpreter.get_vreg(inst_inputs[2])?;
+            let rdhi_current = interpreter.get_vreg(inst_inputs[3])?;
+
+            let mul = rn * rm;
+
+            let result = mul.wrapping_add(rdlo_current).wrapping_add(rdhi_current);
+
+            // UMAAL NEVER updates flags (no S bit)
 
             Ok(result)
         }

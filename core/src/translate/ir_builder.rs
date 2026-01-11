@@ -41,7 +41,7 @@ pub enum IROp {
     // Multiply and multiply accumulate
     Mul(bool),
     Mla(bool),
-    Umaal(bool),
+    Umaal,
     Mls,
     Umull(bool),
     Umlal(bool),
@@ -103,7 +103,7 @@ impl IROp {
             // Multiply and multiply accumulate
             IROp::Mul(_) => "MUL",
             IROp::Mla(_) => "MLA",
-            IROp::Umaal(_) => "UMAAL",
+            IROp::Umaal => "UMAAL",
             IROp::Mls => "MLS",
             IROp::Umull(_) => "UMULL",
             IROp::Umlal(_) => "UMLAL",
@@ -364,5 +364,17 @@ impl IRBuilder {
     }
     pub fn emit_umull(&mut self, rn: u32, rm: u32, s: bool) -> u32 {
         self.emit(IROp::Umull(s), vec![rn, rm]).unwrap()
+    }
+    pub fn emit_smull(&mut self, rn: u32, rm: u32, s: bool) -> u32 {
+        self.emit(IROp::Smull(s), vec![rn, rm]).unwrap()
+    }
+    pub fn emit_umlal(&mut self, rn: u32, rm: u32, rd: u32, ra: u32, s: bool) -> u32 {
+        self.emit(IROp::Umlal(s), vec![rn, rm, rd, ra]).unwrap()
+    }
+    pub fn emit_smlal(&mut self, rn: u32, rm: u32, rd: u32, ra: u32, s: bool) -> u32 {
+        self.emit(IROp::Smlal(s), vec![rn, rm, rd, ra]).unwrap()
+    }
+    pub fn emit_umaal(&mut self, rn: u32, rm: u32, rd: u32, ra: u32) -> u32 {
+        self.emit(IROp::Umaal, vec![rn, rm, rd, ra]).unwrap()
     }
 }
